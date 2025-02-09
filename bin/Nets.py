@@ -1,0 +1,99 @@
+import torch
+from torch import Tensor
+from torch.nn import Module, ModuleList
+from typing import Optional
+
+
+
+class GaussianFourierProjection(Module):
+    def __init__(self, embed_dim: int, scale: float = 30., device: Optional[str]=None) -> None:
+        super().__init__()
+        self.W = torch.nn.Parameter(torch.randn(embed_dim // 2, device=device) * scale, requires_grad=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x_proj = x[:, None] * self.W[None, :] * 2 * torch.pi
+        return torch.cat([x_proj.sin(), x_proj.cos()], dim=-1)
+
+
+class Embedding(Module):
+	def __init__(self, embed_dim: int, activation: Module = torch.nn.SiLU(), device: Optional[str | torch.device]=None):
+		super().__init__()
+		self.act = activation
+		self.embed = torch.nn.Sequential(
+			GaussianFourierProjection(embed_dim=embed_dim, device=device),
+			torch.nn.Linear(embed_dim, embed_dim, device=device),
+		)
+	
+	def forward(self, x: Tensor):
+		return self.act(self.embed(x))
+
+
+class CNet(Module):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [64, 128, 256], 
+			time_channels: int = 32, 
+			activation: Module = torch.nn.SiLU(),
+			dropout_rate: float = 0.2,
+			padding_mode: str = "circular",
+			device: Optional[str | torch.device] = None,
+			**kwargs
+		) -> None:
+		super().__init__()
+		self.time_embed = Embedding(embed_dim=time_channels, device=device)
+		self.channels = channels
+		self.channels_r = channels[::-1]
+
+		self.t_linears = ModuleList([
+			torch.nn.Linear(time_channels, c, device=device) for c in self.channels + self.channels_r[1:]
+		])
+
+		self.norm_layers = ModuleList([
+			torch.nn.GroupNorm(c//4, c, device=device) for c in self.channels
+		] + [
+			torch.nn.GroupNorm(c//4, c, device=device) for c in self.channels_r[1:]
+		])
+		self.down_layers = ModuleList([
+			torch.nn.Conv2d(in_channels, self.channels[0], kernel_size=3, stride=1, bias=False, padding=1, padding_mode=padding_mode, device=device)
+		] + [
+			torch.nn.Conv2d(c_in, c_out, kernel_size=3, stride=1, bias=False, padding=1, padding_mode=padding_mode, device=device)
+			for c_in, c_out in zip(self.channels, self.channels[1:])
+		])
+
+		self.up_layers = ModuleList([
+			torch.nn.Conv2d(self.channels[-1], self.channels[-2], kernel_size=3, stride=1, bias=False, padding=1, padding_mode=padding_mode, device=device)
+		] + [
+			torch.nn.Conv2d(2 * c_in, c_out, kernel_size=3, stride=1, bias=False, padding=1, padding_mode=padding_mode, device=device)
+			for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
+		])
+		
+		self.act = activation
+		self.dropout = torch.nn.Dropout(dropout_rate)
+		self.out = torch.nn.Conv2d(channels[0], 1, kernel_size=3, padding=1, padding_mode=padding_mode, device=device)
+
+
+	def forward(self, *inputs: tuple):
+		return self._forward_impl(*inputs)
+
+	def _forward_impl(self, x: Tensor, t: Tensor) -> Tensor:
+		skip = []
+		t_emb = self.time_embed(t)
+
+		for i, layer in enumerate(self.down_layers):
+			x = layer(x)
+			x += self.t_linears[i](t_emb)[..., None, None]; 
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i](x))
+			if i != len(self.down_layers) - 1:
+				skip.append(x)
+		
+		for n, layer in enumerate(self.up_layers):
+			x = layer(x)
+			x += self.t_linears[i + n + 1](t_emb)[..., None, None]
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i + n + 1](x))
+			if n != len(self.up_layers) - 1:
+				x = torch.cat([x, skip.pop()], dim=1)
+
+		return self.out(x)

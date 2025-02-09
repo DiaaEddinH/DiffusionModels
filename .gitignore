@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__
+.vscode
+.pytest_cache
+bin/testing.ipynb
+clean_environment.sh
