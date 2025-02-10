@@ -27,6 +27,46 @@ class Embedding(Module):
 	def forward(self, x: Tensor):
 		return self.act(self.embed(x))
 
+class LinearNet(Module):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [32, 32], 
+			time_channels: int = 32, 
+			activation: Module = torch.nn.LeakyReLU(),
+			dropout_rate: float = 0.2,
+			device: Optional[str | torch.device] = None,
+			**kwargs
+		) -> None:
+		super().__init__()
+		self.time_embed = Embedding(embed_dim=time_channels, device=device)
+        # Network architecture layers
+		self.channels = [in_channels] + channels
+		self.t_linears = ModuleList([
+			torch.nn.Linear(time_channels, c, device=device) for c in channels
+		])
+		self.layers = ModuleList([
+                torch.nn.Linear(self.channels[i], self.channels[i + 1], device=device)
+                for i in range(len(self.channels) - 1)
+        ])
+		self.final = torch.nn.Linear(channels[-1], in_channels, device=device)
+		self.dropout = torch.nn.Dropout(dropout_rate)
+		self.act = activation
+        # Model's parameter
+
+	def forward(self, *inputs: tuple):
+		return self._forward_impl(*inputs)
+
+	def forward(self, x: Tensor, t: Tensor) -> torch.Tensor:
+		t_emb = self.time_embed(t)
+
+		for i, layer in enumerate(self.layers):
+			x = layer(x)
+			x += self.t_linears[i](t_emb)
+			x = self.dropout(x)
+			x = self.act(x)
+
+		return self.final(x)
 
 class CNet(Module):
 	def __init__(
