@@ -10,7 +10,7 @@ from utils import set_device, ddp_setup, destroy_ddp, grab
 
 from torch.utils.data import DataLoader
 from DiffusionModels import ScoreModel
-from Nets import CNet
+from Nets import CNet, CCNet
 
 CWD = os.getcwd()
 
@@ -25,6 +25,8 @@ class Dataset:
 	def init_dataset(self):
 		data = np.random.randn(1000, 1, 8, 8).astype(np.float32)
 		labels = np.random.randint(0, 2, data.shape[0]).astype(np.float32)
+		if self.use_labels:
+			data[labels == 1] = np.random.rand(sum(labels==1), 1, 8, 8).astype(np.float32)
 		return data, labels
 	
 	def __len__(self):
@@ -58,12 +60,13 @@ if __name__=="__main__":
 		"marginal_prob_sigma": 25,
 		"channels": [16, 16],
 		"time_channels": 32,
+		"beta_channels": 32,
 		"batch_size": args.batch_size,
 		"base_lr": args.lr,
 		"N_epochs": args.max_epochs,
 		"activation": "silu",
 		"dropout_rate": 0.2,
-		"padding_mode": "circular",
+		"padding_mode": "zeros",
 	}
 
 	model_filename = CWD + "/data/weights/" + args.file + "_weights.pt"
@@ -75,7 +78,7 @@ if __name__=="__main__":
 
 # 	DATASET
 
-	dataset = Dataset() 
+	dataset = Dataset(use_labels=True) 
 	dist_sampler = ddp_setup(dataset, args.ddp) #Set up backend and sampler for distributed learning
 	loader = DataLoader(
 		dataset=dataset, 
@@ -86,10 +89,11 @@ if __name__=="__main__":
 	)
 
 # 	MODEL
-	net = CNet(
+	net = CCNet(
 		in_channels=parameters["in_channels"],
 		channels=parameters["channels"],
 		time_channels=parameters["time_channels"],
+		beta_channels=parameters["beta_channels"],
 		activation=torch.nn.SiLU(),
 		dropout_rate=parameters["dropout_rate"],
 		padding_mode=parameters["padding_mode"],
@@ -129,7 +133,13 @@ if __name__=="__main__":
 #	SAMPLING
 
 	print("Generating samples...")
-	samples = grab(sampler(model, (5_000, 1, 32, 32), 250, eps=1e-3))
+	batch_size = 500 #
+	samples = []
+	for beta in torch.linspace(0., 1., 5, device=device):
+		label = beta.expand(batch_size)
+		samples_ = grab(sampler(model, (batch_size, 1, 32, 32), 250, label, eps=1e-3))
+		samples.append(samples_)
+	samples = np.stack(samples)
 	print("Saving samples...")
 	np.save(CWD + "/data/" + args.file + "_samples.npy", samples)
 	print("All done!")

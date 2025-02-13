@@ -40,7 +40,7 @@ class ScoreModel(Module):
 
 	def forward(self, x: Tensor, t: Tensor, *labels):
 		d = (x.dim() - 1) * [None,]
-		return self.network(x, t) / self.marginal_prob.stddev(t)[:, *d]
+		return self.network(x, t, *labels) / self.marginal_prob.stddev(t)[:, *d]
 	
 
 	def loss_fn(self, batch, *labels, eps: float = 1e-5):
@@ -78,7 +78,8 @@ class ConditionalScoreModel(ScoreModel):
 		super().__init__(network, marginal_prob_sigma, device)
 	
 	def forward(self, x, t, label):
-		return self.network(x, t, label) / self.marginal_prob.stddev(t)
+		d = (x.dim() - 1) * [None,]
+		return self.network(x, t, label) / self.marginal_prob.stddev(t)[:, *d]
 
 	def train_step(self, x, labels, optimizer, eps, scheduler=None):
 		if self.dims is None:

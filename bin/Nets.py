@@ -137,3 +137,48 @@ class CNet(Module):
 				x = torch.cat([x, skip.pop()], dim=1)
 
 		return self.out(x)
+
+
+class CCNet(CNet):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [64, 128, 256], 
+			time_channels: int = 32,
+			beta_channels: int = 32, 
+			activation: Module = torch.nn.SiLU(), 
+			dropout_rate: float = 0.2, 
+			padding_mode: str = "circular", 
+			device: Optional[str | torch.device] = None, 
+			**kwargs
+		):
+		super().__init__(in_channels, channels, time_channels, activation, dropout_rate, padding_mode, device, **kwargs)
+		self.beta_embed = Embedding(embed_dim=beta_channels, device=device)
+		self.b_linears = ModuleList([
+			torch.nn.Linear(beta_channels, c, device=device) for c in self.channels + self.channels_r[1:]
+		])
+	
+	def _forward_impl(self, x: Tensor, t: Tensor, beta: Tensor) -> Tensor:
+		skip = []
+		t_emb = self.time_embed(t)
+		b_emb = self.beta_embed(beta)
+
+		for i, layer in enumerate(self.down_layers):
+			x = layer(x)
+			x += self.t_linears[i](t_emb)[..., None, None] 
+			x += self.b_linears[i](b_emb)[..., None, None]
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i](x))
+			if i != len(self.down_layers) - 1:
+				skip.append(x)
+		
+		for n, layer in enumerate(self.up_layers):
+			x = layer(x)
+			x += self.t_linears[i + n + 1](t_emb)[..., None, None]
+			x += self.b_linears[i + n + 1](b_emb)[..., None, None]
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i + n + 1](x))
+			if n != len(self.up_layers) - 1:
+				x = torch.cat([x, skip.pop()], dim=1)
+
+		return self.out(x)

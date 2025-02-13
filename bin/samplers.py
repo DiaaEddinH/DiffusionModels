@@ -1,8 +1,9 @@
 import torch
 from tqdm import tqdm
+from DiffusionModels import ScoreModel
 
 def sampler(
-	model: torch.nn.Module, shape: tuple, num_steps: int, history: bool = False, eps=1e-3
+	model: torch.nn.Module, shape: tuple, num_steps: int, *labels, history: bool = False, eps=1e-3
 ):
 	output = []
 	batch_size = shape[0]
@@ -23,7 +24,7 @@ def sampler(
 			batch_t = t_i.expand(batch_size)
 			g_t = model.marginal_prob.diffusion_coeff(batch_t)[:, *d]
 
-			score = model.forward(x, batch_t)
+			score = model.forward(x, batch_t, *labels)
 			noise = torch.randn_like(x) if t_i > eps else torch.zeros_like(x)
 
 			x = (
