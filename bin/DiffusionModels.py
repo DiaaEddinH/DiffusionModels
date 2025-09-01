@@ -6,6 +6,40 @@ from torch import Tensor
 from torch.nn import Module
 
 
+class EMA:
+	def __init__(self, model, decay=0.999):
+		self.decay = decay
+		self.model = model
+		self.shadow = {}
+		self.backup = {}
+
+		"""Copy initial parameters"""
+		for name, param in model.named_parameters():
+			if param.requires_grad:
+				self.shadow[name] = param.data.clone()
+
+	def update(self):
+		"""Update moving averages with current parameters"""
+		for name, param in self.model.named_parameters():
+			if param.requires_grad:
+				new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
+				self.shadow[name] = new_average.clone()
+
+	def apply_shadow(self):
+		"""Backup current params and apply EMA weights"""
+		for name, param in self.model.named_parameters():
+			if param.requires_grad:
+				self.backup[name] = param.data.clone()
+				param.data = self.shadow[name].clone()
+
+	def restore(self):
+		"""Restore original parameters"""
+		for name, param in self.model.named_parameters():
+			if param.requires_grad:
+				param.data = self.backup[name].clone()
+		self.backup = {}
+
+
 class MarginalProb:
 	def __init__(self, sigma: float = 2.0) -> None:
 		self.logsigma = log(sigma)
@@ -36,6 +70,7 @@ class ScoreModel(Module):
 		self.device = device
 		self.history = []
 		self.dims = None
+		self.ema = EMA(self)
 
 
 	def forward(self, x: Tensor, t: Tensor, *labels):
@@ -72,65 +107,13 @@ class ScoreModel(Module):
 
 		return loss
 
+	def _load_weights(self, file_path):
+		save_dict = torch.load(file_path, map_location=self.device, weights_only=True)
+		self.load_state_dict(save_dict["MODEL_STATE"])
+		self.history = save_dict.get("HISTORY", [])
+		self.ema.shadow = save_dict.get("EMA", {})
 
-class ConditionalScoreModel(ScoreModel):
-	def __init__(self, network, marginal_prob_sigma = 25, device = None):
-		super().__init__(network, marginal_prob_sigma, device)
-	
-	def forward(self, x, t, label):
-		d = (x.dim() - 1) * [None,]
-		return self.network(x, t, label) / self.marginal_prob.stddev(t)[:, *d]
-
-	def train_step(self, x, labels, optimizer, eps, scheduler=None):
-		if self.dims is None:
-			self.dims = tuple(range(1, len(x.shape)))
-		random_t = torch.rand(x.shape[0], device=self.device) * (1.0 - eps) + eps
-		z = torch.randn_like(x, )
-		mean, std = self.marginal_prob.get_mean_stddev(x, random_t)
-		perturbed_x = mean + z * std
-
-		optimizer.zero_grad()
-
-		score = self.forward(perturbed_x, random_t, labels)
-		loss = 0.5 * torch.mean(torch.sum((score * std + z) ** 2, dim=self.dims))
-
-		loss.backward()
-		optimizer.step()
-
-		if scheduler is not None:
-			scheduler.step()
-
-		return loss
-
-	def sampler(
-		self, labels, batch_size: int, shape: tuple, num_steps: int, history: bool = False, eps=1e-5
-	):
-		output = []
-		step_size = 1 / num_steps
-		step_size_sqrt = step_size**0.5
-
-		self.eval()
-
-		t_0 = torch.ones(batch_size, device=self.device)
-		std = self.marginal_prob.stddev(t_0)
-		x = torch.randn(batch_size, *shape, device=self.device) * std
-		with torch.no_grad():
-			for t_i in tqdm(
-				torch.linspace(1, eps, num_steps, device=self.device)
-			):
-				batch_t = t_i * t_0
-				g_t = self.marginal_prob.diffusion_coeff(batch_t)
-
-				score = self.forward(x, batch_t, labels)
-				noise = torch.randn_like(x) if t_i > eps else torch.zeros_like(x)
-
-				x = (
-					x
-					+ step_size * g_t**2 * score
-					+ step_size_sqrt * g_t * noise
-				)
-				if history:
-					output.append(x)
-			if history:
-				return torch.stack(output)
-		return x
+	def _save_weights(self, file_path):
+		save_dict = {"MODEL_STATE": self.state_dict(), "EMA": self.ema.shadow, "HISTORY": self.history}
+		torch.save(save_dict, file_path)
+		print(f"Weights saved at {file_path}...")

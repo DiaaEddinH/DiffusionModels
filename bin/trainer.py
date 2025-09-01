@@ -60,6 +60,7 @@ class Trainer:
 	def _load_checkpoint(self):
 		ckpt = torch.load(self.checkpoint, map_location=self.device, weights_only=True)
 		self.model.load_state_dict(ckpt["MODEL_STATE"])
+		self.model.ema.shadow = ckpt['EMA']
 		self.epochs = ckpt["EPOCHS"]
 		self.history = ckpt["HISTORY"]
 		if self.rank == 0:
@@ -68,7 +69,7 @@ class Trainer:
 
 	def _save_checkpoint(self, epoch):
 		model = self.model.module if self.use_ddp else self.model
-		checkpoint = {"MODEL_STATE": model.state_dict(), "EPOCHS": epoch, "HISTORY": self.history}
+		checkpoint = {"MODEL_STATE": model.state_dict(), "EMA": model.ema.shadow, "EPOCHS": epoch, "HISTORY": self.history}
 		torch.save(checkpoint, self.checkpoint)
 		print(f"Epoch {epoch} | Checkpoint saved at {self.checkpoint}")
 
@@ -98,6 +99,9 @@ class Trainer:
 
 				loss = model.train_step(batch, self.optimizer, *labels, scheduler=scheduler)
 
+				if epoch % self.ckpt_freq == 0:
+					model.ema.update()
+
 				if self.use_ddp:
 					# Reduce loss across all processes to get avg loss
 					reduced_loss = loss.clone()
@@ -120,7 +124,7 @@ class Trainer:
 				if best_loss > current_loss:
 					counter = 0
 					best_loss = current_loss
-					torch.save(model.state_dict(), self.file_path)
+					model._save_weights(self.file_path)
 					log_string += " ---> Best model so far (stored)"
 				else:
 					counter += 1
