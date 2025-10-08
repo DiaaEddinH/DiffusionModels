@@ -10,7 +10,7 @@ from utils import set_device, ddp_setup, destroy_ddp, grab
 
 from torch.utils.data import DataLoader
 from DiffusionModels import ScoreModel
-from Nets import CNet, CCNet
+from Nets import CUNet
 
 CWD = os.getcwd()
 
@@ -58,7 +58,7 @@ if __name__=="__main__":
 	parameters = {
 		"in_channels": 1,
 		"marginal_prob_sigma": 25,
-		"channels": [16, 16],
+		"channels": [16, 32, 64],
 		"time_channels": 32,
 		"beta_channels": 32,
 		"batch_size": args.batch_size,
@@ -89,7 +89,7 @@ if __name__=="__main__":
 	)
 
 # 	MODEL
-	net = CCNet(
+	net = CUNet(
 		in_channels=parameters["in_channels"],
 		channels=parameters["channels"],
 		time_channels=parameters["time_channels"],
@@ -137,7 +137,7 @@ if __name__=="__main__":
 	samples = []
 	for beta in torch.linspace(0., 1., 5, device=device):
 		label = beta.expand(batch_size)
-		samples_ = grab(sampler(model, (batch_size, 1, 32, 32), 250, label, eps=1e-3))
+		samples_ = grab(sampler(model, (batch_size, 1, 8, 8), 250, label, eps=1e-3))
 		samples.append(samples_)
 	samples = np.stack(samples)
 	print("Saving samples...")

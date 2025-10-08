@@ -4,3 +4,7 @@ __pycache__
 .pytest_cache
 bin/testing.ipynb
 clean_environment.sh
+
+*.pt
+*.json
+*.npy

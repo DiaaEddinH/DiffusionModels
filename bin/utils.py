@@ -36,8 +36,3 @@ def count_trainable_parameters(model):
 
 def grab(x: torch.Tensor) -> np.ndarray:
     return x.detach().cpu().numpy()
-
-
-
-		
-	

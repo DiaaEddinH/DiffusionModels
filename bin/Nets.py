@@ -182,3 +182,142 @@ class CCNet(CNet):
 				x = torch.cat([x, skip.pop()], dim=1)
 
 		return self.out(x)
+
+
+class CCNet2(CNet):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [64, 128, 256], 
+			time_channels: int = 32,
+			beta_channels: int = 32, 
+			activation: Module = torch.nn.SiLU(), 
+			dropout_rate: float = 0.2, 
+			padding_mode: str = "circular", 
+			device: Optional[str | torch.device] = None, 
+			**kwargs
+		):
+		super().__init__(in_channels + beta_channels, channels, time_channels, activation, dropout_rate, padding_mode, device, **kwargs)
+		self.beta_embed = Embedding(embed_dim=beta_channels, device=device)
+		self.b_linears = ModuleList([
+			torch.nn.Linear(beta_channels, c, device=device) for c in self.channels + self.channels_r[1:]
+		])
+	
+	def _forward_impl(self, x: Tensor, t: Tensor, beta: Tensor) -> Tensor:
+		b, _, h, w = x.shape
+		b_emb = self.beta_embed(beta)[..., None, None].expand(b, -1, h, w)
+		x = torch.cat([x, b_emb], dim=1)
+		return super()._forward_impl(x, t)
+
+
+class UNet(torch.nn.Module):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [64, 128, 256], 
+			time_channels: int = 32, 
+			activation = torch.nn.SiLU(),
+			dropout_rate: float = 0.2,
+			padding_mode: str = "circular",
+			device= None,
+			**kwargs
+		) -> None:
+		super().__init__()
+		self.time_embed = Embedding(embed_dim=time_channels, device=device)
+		self.channels = channels
+		self.channels_r = channels[::-1]
+
+		self.t_linears = torch.nn.ModuleList([
+			torch.nn.Linear(time_channels, c, device=device) for c in self.channels + self.channels_r[1:]
+		])
+
+		self.norm_layers = torch.nn.ModuleList([
+			torch.nn.GroupNorm(c//4, c, device=device) for c in self.channels
+		] + [
+			torch.nn.GroupNorm(c//4, c, device=device) for c in self.channels_r[1:]
+		])
+		self.down_layers = torch.nn.ModuleList([
+			torch.nn.Conv2d(in_channels, self.channels[0], kernel_size=3, dilation=2, bias=False, padding=1, padding_mode=padding_mode, device=device)
+		] + [
+			torch.nn.Conv2d(c_in, c_out, kernel_size=3, dilation=2, bias=False, padding=1, padding_mode=padding_mode, device=device)
+			for c_in, c_out in zip(self.channels, self.channels[1:])
+		])
+
+		self.up_layers = torch.nn.ModuleList([
+			torch.nn.ConvTranspose2d(self.channels[-1], self.channels[-2], kernel_size=3, dilation=1, bias=False, output_padding=0, device=device)
+		] + [
+			torch.nn.ConvTranspose2d(2 * c_in, c_out, kernel_size=3, dilation=1, bias=False, output_padding=0, device=device)
+			for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
+		])
+		
+		self.act = activation
+		self.dropout = torch.nn.Dropout(dropout_rate)
+		self.out = torch.nn.ConvTranspose2d(2*channels[0], 1, kernel_size=3, device=device)
+
+
+	def forward(self, *inputs: tuple):
+		return self._forward_impl(*inputs)
+
+	def _forward_impl(self, x, t):
+		skip = []
+		t_emb = self.time_embed(t)
+
+		for i, layer in enumerate(self.down_layers):
+			x = layer(x)
+			x += self.t_linears[i](t_emb)[..., None, None]; 
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i](x))
+			if i != len(self.down_layers) - 1:
+				skip.append(x)
+
+		for n, layer in enumerate(self.up_layers):
+			x = layer(x);
+			x += self.t_linears[i + n + 1](t_emb)[..., None, None]
+			x = self.dropout(x)
+			x = self.act(self.norm_layers[i + n + 1](x))
+			x = torch.cat([x, skip.pop()], dim=1)
+
+		return self.out(x)
+
+
+class CUNet(UNet):
+	def __init__(
+			self, 
+			in_channels: int = 2, 
+			channels: list = [64, 128, 256], 
+			time_channels: int = 32,
+			beta_channels: int = 32, 
+			activation = torch.nn.SiLU(), 
+			dropout_rate: float = 0.2, 
+			padding_mode: str = "zeros", 
+			device = None, 
+			**kwargs
+		):
+		super().__init__(in_channels + beta_channels, channels, time_channels, activation, dropout_rate, padding_mode, device, **kwargs)
+		self.beta_embed = Embedding(embed_dim=beta_channels, device=device)
+		self.b_linears = torch.nn.ModuleList([
+			torch.nn.Linear(beta_channels, c, device=device) for c in self.channels + self.channels_r[1:]
+		])
+	
+	def _forward_impl(self, x, t, beta):
+		b, _, h, w = x.shape
+		b_emb = self.beta_embed(beta)[..., None, None].expand(b, -1, h, w)
+		x = torch.cat([x, b_emb], dim=1)
+		return super()._forward_impl(x, t)
+
+
+class BetaConditionedNet(torch.nn.Module):
+	def __init__(self, net:torch.nn.Module, beta_channels: int = 32):
+		super().__init__()
+		self.net = net
+		# self.device = net.device
+		self.beta_embed = Embedding(embed_dim=beta_channels, device=net.device)
+		self.b_linears = torch.nn.ModuleList([
+			torch.nn.Linear(beta_channels, c, device=net.device) for c in self.channels + self.channels_r[1:]
+		])
+	
+	def _forward_impl(self, x, t, beta):
+		b, _, h, w = x.shape
+		b_emb = self.beta_embed(beta)[..., None, None].expand(b, -1, h, w)
+		x = torch.cat([x, b_emb], dim=1)
+		return super()._forward_impl(x, t)
