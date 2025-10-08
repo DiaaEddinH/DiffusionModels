@@ -1,0 +1,23 @@
+file: "example"
+ddp: true
+device: gpu
+
+lr: 0.0001
+max_epochs: 2
+batch_size: 512
+num_workers: 1
+patience: 50
+
+# NETWORK PARAMETERS
+# parameters:
+in_channels: 2
+hidden_channels: [64, 64]
+time_channels: 128
+label_dim: 128
+activation: leakyrelu
+sigma_min: 0.02
+sigma_max: 10
+
+# SAMPLE GENERATION PARAMETERS
+sample_size: 100000
+time_steps: 500

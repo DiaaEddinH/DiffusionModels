@@ -5,6 +5,27 @@ __pycache__
 bin/testing.ipynb
 clean_environment.sh
 
-*.pt
-*.json
-*.npy
+# Ignore all .yaml files except example_config.yaml
+*.yaml
+!example_config.yaml
+configs/*.yaml
+!configs/example_config.yaml
+logs/
+outputs/
+data/
+models/
+results/
+runs/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints
+*.ipynb
+# Ignore virtual environment directories
+env/
+venv/
+ENV/
+.venv/
+# Ignore IDE specific files
+.vscode
+# Ignore system files
+.DS_Store
