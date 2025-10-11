@@ -1,5 +1,4 @@
 import numpy as np
-from glob import glob
 
 
 def load_val_err(files_pattern):
