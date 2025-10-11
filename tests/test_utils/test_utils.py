@@ -168,3 +168,18 @@ def test_set_default_plot_parameters_updates_rcparams():
     # Color cycle first color
     first_color = plt.rcParams["axes.prop_cycle"].by_key()["color"][0]
     assert first_color == "#4477AA"
+
+
+def test_set_device_gpu_requested_no_gpu_prints_and_uses_cpu(monkeypatch, capsys):
+    # No CUDA, no MPS → should print the fallback message and return CPU device
+    monkeypatch.delenv("LOCAL_RANK", raising=False)
+    with mock.patch.object(
+        torch.cuda, "is_available", return_value=False
+    ), mock.patch.object(torch.backends.mps, "is_available", return_value=False):
+        dev = set_device("gpu")
+        captured = capsys.readouterr()
+        assert (
+            "Supported GPUs are not available. Setting CPU as device." in captured.out
+        )
+        assert isinstance(dev, torch.device)
+        assert dev.type == "cpu"
