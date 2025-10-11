@@ -30,6 +30,7 @@ def bootstrap(data, n_boot=100):
 
 
 def moment(data, order, axis=0, center=None):
+    # TODO check comment in test_order_zero_returns_one and test_all_equal_returns_zero_for_order_ge1
     if center is None:
         center = np.mean(data, axis=axis)
     return np.mean((data - center) ** order, axis=axis)
