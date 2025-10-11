@@ -122,7 +122,6 @@ dependencies:
   - libev=4.33
   - libexpat=2.6.2
   - libffi=3.4.2
-  - libgfortran=5.0.0
   - libgfortran5=14.2.0
   - libjpeg-turbo=3.0.0
   - liblapack=3.9.0
@@ -198,8 +197,6 @@ dependencies:
   - pydantic=2.11.9
   - pydantic-core=2.33.2
   - pygments=2.18.0
-  - pyobjc-core=10.3.1
-  - pyobjc-framework-cocoa=10.3.1
   - pyparsing=3.1.2
   - pysocks=1.7.1
   - pytest=8.3.3
