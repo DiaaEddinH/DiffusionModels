@@ -1,8 +1,9 @@
 import sys
 import unittest
+import argparse
 from pathlib import Path
 
-from config_loader import parse_configs
+from src.config_loader import parse_configs, load_config, add_args_from_config
 
 
 class ConfigTestCase(unittest.TestCase):
@@ -17,10 +18,8 @@ class ConfigTestCase(unittest.TestCase):
         # Patch sys.argv
         sys.argv = ["test_configs.py"] + test_args
 
-        # Parse configs
         args = parse_configs()
 
-        # assert the above values
         self.assertEqual(args.file, "example")
         self.assertTrue(args.ddp)
         self.assertEqual(args.device, "gpu")
@@ -38,6 +37,32 @@ class ConfigTestCase(unittest.TestCase):
         self.assertEqual(args.sigma_max, 10)
         self.assertEqual(args.sample_size, 100000)
         self.assertEqual(args.time_steps, 500)
+
+    def test_load_config_missing_returns_empty(self):
+        cfg = load_config("/tmp/this_config_does_not_exist.yaml")
+        self.assertEqual(cfg, {})
+
+    def test_add_args_from_config_and_parse(self):
+        # Prepare a minimal config dict
+        cfg = {"flag": False, "lr": 0.1, "epochs": 5, "name": "exp"}
+        parser = argparse.ArgumentParser()
+        add_args_from_config(parser, cfg)
+        # defaults from config
+        parser.set_defaults(**cfg)
+
+        # Case 1: no overrides -> should equal defaults
+        args = parser.parse_args([])
+        self.assertFalse(args.flag)
+        self.assertEqual(args.lr, 0.1)
+        self.assertEqual(args.epochs, 5)
+        self.assertEqual(args.name, "exp")
+
+        # Case 2: override bool via flag and numeric via CLI
+        args = parser.parse_args(["--flag", "--lr", "0.2", "--epochs", "7"])
+        self.assertTrue(args.flag)
+        self.assertEqual(args.lr, 0.2)
+        self.assertEqual(args.epochs, 7)
+        self.assertEqual(args.name, "exp")  # unchanged
 
 
 if __name__ == "__main__":

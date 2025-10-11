@@ -4,7 +4,6 @@ import numpy as np
 
 import torch.distributed as dist
 from torch.nn.modules import activation
-from torch.utils.data import DistributedSampler
 
 
 def set_device(device: str = "cpu") -> torch.device:
