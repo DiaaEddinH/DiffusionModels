@@ -8,6 +8,7 @@ clean_environment.sh
 # Ignore all .yaml files except example_config.yaml
 *.yaml
 !example_config.yaml
+!CI_tests.yaml
 configs/*.yaml
 !configs/example_config.yaml
 
@@ -23,3 +24,4 @@ ENV/
 .vscode
 # Ignore system files
 .DS_Store
+.idea

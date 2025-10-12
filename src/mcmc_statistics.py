@@ -30,6 +30,7 @@ def bootstrap(data, n_boot=100):
 
 
 def moment(data, order, axis=0, center=None):
+    # TODO check comment in test_order_zero_returns_one and test_all_equal_returns_zero_for_order_ge1
     if center is None:
         center = np.mean(data, axis=axis)
     return np.mean((data - center) ** order, axis=axis)
@@ -187,7 +188,7 @@ def torch_mh_parallel(
         if adapt and steps_in_window >= adapt_window:
             rate = acc_window / float(steps_in_window)
             prop_std = torch.where(rate < 0.2, prop_std * 0.9, prop_std)
-            prop_std = torch.where(rate < 0.5, prop_std * 1.1, prop_std)
+            prop_std = torch.where(rate > 0.5, prop_std * 1.1, prop_std)
             prop_std = torch.clamp(prop_std, 0.15, 2.5)
             acc_window.zero_()
             steps_in_window = 0
@@ -406,7 +407,7 @@ def main():
     adapt = True
     adapt_window = 500  # adaptation interval during burn-in
 
-    xs_all, ys_all, acc_rate = mh_parallel(
+    samples, acc_rate = mh_parallel(
         n_chains=n_chains,
         n_keep=n_keep_per_chain,
         burn_in=burn_in,
@@ -416,6 +417,9 @@ def main():
         adapt=adapt,
         adapt_window=adapt_window,
     )
+
+    xs_all = samples[:, 0]
+    ys_all = samples[:, 1]
 
     max_k = 8
 
