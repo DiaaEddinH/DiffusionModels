@@ -9,9 +9,6 @@ from src.datasets.datasets import (
     DoublePeak,
     DoublePeakMuConditioned,
     DoublePeakMuDiscrete,
-    # QuarticCL,                # moved to local import inside its test
-    # Phi4Dataset,              # moved to local import inside its tests
-    # datasets_dir,             # not needed here
 )
 
 
