@@ -2,7 +2,11 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from src.random_effects import load_val_err, calc_random_effects, random_effects_from_files
+from src.random_effects import (
+    load_val_err,
+    calc_random_effects,
+    random_effects_from_files,
+)
 
 
 def _make_npz(path: Path, val: np.ndarray, err: np.ndarray):

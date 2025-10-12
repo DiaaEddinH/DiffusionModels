@@ -1,4 +1,3 @@
-# tests/test_trainer.py
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,11 +8,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 from src.trainer import Trainer
-
-
-# ------------------------
-# Test doubles / utilities
-# ------------------------
 
 
 class DummyEMA:
@@ -288,11 +282,6 @@ def test_train_ddp_reduction_branch_monkeypatched(tmp_path, monkeypatch):
 
     # History still recorded on rank 0
     assert len(trainer.history) == 1
-
-
-# ------------------------
-# Additional high-impact tests
-# ------------------------
 
 
 def test_set_model_wraps_with_ddp_on_init(tmp_path, monkeypatch):

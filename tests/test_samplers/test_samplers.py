@@ -113,7 +113,7 @@ def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
         assert out.shape == (num_steps, batch, dims)
         assert out.device.type == torch.device(device).type
 
-        # with drift=0 and g_t=1, last step has t==eps => noise is zero, so last two frames must be equal
+        # with drift=0 and g_t=1, last step has t==eps => test_noise is zero, so last two frames must be equal
         assert torch.allclose(out[-1], out[-2])
     else:
         # no history returns just the final tensor with requested shape
@@ -122,7 +122,7 @@ def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
         assert out.device.type == torch.device(device).type
 
     # --- Deterministic drift check (no extra test; keeps suite minimal) ---
-    # Disable noise by setting eps = 1.0 and use nonzero drift; with g_t=1 the update becomes:
+    # Disable test_noise by setting eps = 1.0 and use nonzero drift; with g_t=1 the update becomes:
     #   x_{k+1} = x_k + step_size * (drift_scale * x_k) = (1 + drift_scale/num_steps) * x_k
     drift_only = DummyModel(device=device, drift_scale=0.5, diff_coeff=1.0, std=2.0)
     hist = em_sampler(

@@ -1,5 +1,3 @@
-# tests/test_models.py
-
 import io
 import torch
 import pytest

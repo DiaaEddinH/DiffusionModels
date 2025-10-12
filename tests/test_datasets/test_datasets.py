@@ -111,7 +111,7 @@ def test_double_peak_mu_conditioned_label_correlation(mu_min, mu_max, sigma, siz
 
     # Correlation: For points centered at (±mu, ∓mu), |x|+|y| ≈ 2*mu
     approx_mu = 0.5 * (np.abs(ds.images[:, 0]) + np.abs(ds.images[:, 1]))
-    # With Gaussian noise sigma on both dims, allow a tolerance
+    # With Gaussian test_noise sigma on both dims, allow a tolerance
     np.testing.assert_allclose(approx_mu.mean(), ds.labels.mean(), rtol=0.05, atol=0.05)
 
     # __getitem__ returns (image, label)
