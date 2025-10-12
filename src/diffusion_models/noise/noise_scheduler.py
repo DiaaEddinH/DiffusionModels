@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Tuple
 
 import torch
@@ -15,11 +15,11 @@ class Schedule(ABC):
 
     """Strategy interface for noise schedules."""
 
-    def stddev(self, t: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+    @abstractmethod
+    def stddev(self, t: torch.Tensor) -> torch.Tensor: ...
 
-    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+    @abstractmethod
+    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor: ...
 
     def mean_stddev(
         self, x: torch.Tensor, t: torch.Tensor
