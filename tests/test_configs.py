@@ -6,7 +6,7 @@ from io import StringIO
 from contextlib import redirect_stderr
 from pathlib import Path
 
-from src.config_loader import parse_configs, load_config, add_args_from_config
+from diffusion_models.config.config_loader import parse_configs, add_args_from_config
 
 
 class TestConfigLoader(unittest.TestCase):

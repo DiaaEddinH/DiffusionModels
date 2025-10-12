@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 import torch
 
-from src.utils import (
+from diffusion_models.utils.utils import (
     set_device,
     ddp_setup,
     destroy_ddp,

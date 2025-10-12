@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 from torch.nn import Module
 
-from noise_scheduler import Schedule, GeometricSchedule
+from diffusion_models.noise.noise_scheduler import Schedule, GeometricSchedule
 
 
 class EMA:

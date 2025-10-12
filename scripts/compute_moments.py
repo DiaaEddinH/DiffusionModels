@@ -1,5 +1,5 @@
 import numpy as np
-from src.statistics import calc_moments
+from diffusion_models.stats.statistics import calc_moments
 
 sample = np.load(snakemake.input[0])
 val, err = calc_moments(sample)

@@ -1,9 +1,6 @@
-import math
-import types
 import torch
-import pytest
 
-from noise_scheduler import GeometricSchedule, LinearSchedule
+from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSchedule
 
 
 def test_geometric_schedule_meaningful_properties_and_api():

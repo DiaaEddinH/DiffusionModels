@@ -1,9 +1,6 @@
-import math
-import types
 import torch
-import pytest
 
-from src.networks import (
+from diffusion_models.networks.networks import (
     GaussianFourierProjection,
     Embedding,
     LinearNet,

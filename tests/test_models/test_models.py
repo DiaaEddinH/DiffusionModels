@@ -1,12 +1,16 @@
-import io
 import torch
 import pytest
 from torch import nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import StepLR
 
-from noise_scheduler import GeometricSchedule, LinearSchedule
-from src.models import EMA, ScoreModel, EnergyBasedModel, FlowMatchingModel
+from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSchedule
+from diffusion_models.models.models import (
+    EMA,
+    ScoreModel,
+    EnergyBasedModel,
+    FlowMatchingModel,
+)
 
 
 class TinyNet(nn.Module):

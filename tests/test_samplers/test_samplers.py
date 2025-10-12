@@ -1,10 +1,8 @@
 import torch
-import types
-import re
 
 import pytest
 
-from src.samplers import em_sampler, ot_sampler
+from diffusion_models.sampling.samplers import em_sampler, ot_sampler
 
 
 class DummyModel(torch.nn.Module):

@@ -1,15 +1,14 @@
-import os
 import torch
 import numpy as np
 
-from src.utils import set_device, ddp_setup, destroy_ddp, grab
+from diffusion_models.utils.utils import set_device, ddp_setup, destroy_ddp, grab
 from torch.utils.data import DataLoader, DistributedSampler
-from src.datasets.datasets import DoublePeak
-from src.config_loader import parse_configs
-from src.samplers import em_sampler
-from src.networks import LinearNet
-from src.models import ScoreModel
-from src.trainer import Trainer
+from diffusion_models.datasets.datasets import DoublePeak
+from diffusion_models.config.config_loader import parse_configs
+from diffusion_models.sampling.samplers import em_sampler
+from diffusion_models.networks.networks import LinearNet
+from diffusion_models.models.models import ScoreModel
+from diffusion_models.training.trainer import Trainer
 from pathlib import Path
 
 

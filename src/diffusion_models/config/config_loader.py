@@ -3,7 +3,7 @@ import argparse
 import yaml
 import sys
 
-from src.utils import get_activation_func
+from diffusion_models.utils.utils import get_activation_func
 
 
 def load_config(config_path):

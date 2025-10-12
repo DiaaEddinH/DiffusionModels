@@ -1,8 +1,7 @@
 import numpy as np
-import pytest
 from pathlib import Path
 
-from src.random_effects import (
+from diffusion_models.effects.random_effects import (
     load_val_err,
     calc_random_effects,
     random_effects_from_files,

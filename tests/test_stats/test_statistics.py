@@ -4,7 +4,7 @@ import torch
 import pytest
 from math import comb
 
-from src.statistics import (
+from diffusion_models.stats.statistics import (
     bootstrap_estimator,
     moment,
     calc_moments,
@@ -12,7 +12,7 @@ from src.statistics import (
     other_moments,
     calc_other_moments,
 )
-from src import statistics as ms
+from diffusion_models.stats import statistics as ms
 
 BOOT_N = 80
 

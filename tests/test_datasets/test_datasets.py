@@ -1,10 +1,9 @@
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from src.datasets.datasets import (
+from diffusion_models.datasets.datasets import (
     BaseDataset,
     DoublePeak,
     DoublePeakMuConditioned,
@@ -163,7 +162,7 @@ def ensure_data_raw(tmp_path, monkeypatch):
     tmp_raw.mkdir(parents=True, exist_ok=True)
 
     # Monkeypatch the module-level datasets_dir Path to our temp path
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     monkeypatch.setattr(datasets_module, "datasets_dir", tmp_raw, raising=True)
 
@@ -172,7 +171,7 @@ def ensure_data_raw(tmp_path, monkeypatch):
 
 def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     QuarticCL = datasets_module.QuarticCL
 
@@ -209,7 +208,7 @@ def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
 
 def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     Phi4Dataset = datasets_module.Phi4Dataset
 
@@ -236,7 +235,7 @@ def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
 
 def test_phi4_len_and_getitem(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     Phi4Dataset = datasets_module.Phi4Dataset
 
