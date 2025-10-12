@@ -1,10 +1,6 @@
 from unittest import mock
 import numpy as np
 import pytest
-import matplotlib
-
-# Use non-interactive backend for tests
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import torch

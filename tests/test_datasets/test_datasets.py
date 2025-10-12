@@ -12,11 +12,6 @@ from src.datasets.datasets import (
 )
 
 
-@pytest.fixture(autouse=True)
-def seed_random():
-    np.random.seed(12345)
-    yield
-    np.random.seed(None)
 
 
 class DummyDataset(BaseDataset):

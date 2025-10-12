@@ -34,11 +34,10 @@ def test_load_val_err_reads_multiple_files(tmp_path):
 
 def test_random_effects_end_to_end_matches_direct_calc(tmp_path):
     # Construct small 2D data across runs
-    rng = np.random.default_rng(0)
     n_runs, m, n = 4, 2, 3
-    Y = rng.normal(loc=0.0, scale=1.0, size=(n_runs, m, n))
+    Y = np.random.normal(loc=0.0, scale=1.0, size=(n_runs, m, n))
     # keep errors positive and not tiny
-    eps = rng.uniform(0.05, 0.5, size=(n_runs, m, n))
+    eps = np.random.uniform(0.05, 0.5, size=(n_runs, m, n))
 
     files = []
     for i in range(n_runs):

@@ -12,11 +12,9 @@ from src.stats import (
 
 
 def test_bootstrap_estimator_real_and_complex():
-    rng = np.random.default_rng(42)
-    data = rng.normal(loc=1.5, scale=0.7, size=200)
+    data = np.random.normal(loc=1.5, scale=0.7, size=200)
 
     # Real-valued observable: mean
-    np.random.seed(0)
     mean_est, err_est = bootstrap_estimator(data, lambda d: np.mean(d), n_bins=200)
     sample_mean = np.mean(data)
     assert np.isfinite(mean_est)
@@ -61,11 +59,9 @@ def test_moment_central_and_axis_center():
 
 
 def test_calc_moments_shapes_and_values():
-    rng = np.random.default_rng(0)
-    data = rng.standard_normal(500)
+    data = np.random.standard_normal(500)
     max_order = 5
 
-    np.random.seed(123)
     vals, errs = calc_moments(data, max_order=max_order, n_bins=300)
     assert vals.shape == (max_order,)
     assert errs.shape == (max_order,)
@@ -80,10 +76,8 @@ def test_calc_moments_shapes_and_values():
 def test_calc_cumulants_gaussian_properties():
     # For a zero-mean Gaussian, true cumulants beyond the 2nd are zero.
     # Use a statistical test: the bootstrap error bars should include zero.
-    rng = np.random.default_rng(123)
-    data = rng.normal(loc=0.0, scale=2.0, size=2000)
+    data = np.random.normal(loc=0.0, scale=2.0, size=2000)
 
-    np.random.seed(321)
     vals, errs = calc_cumulants(data, max_order=8, n_bins=400)
     assert vals.shape == (8,)
     assert errs.shape == (8,)
@@ -118,12 +112,10 @@ def test_other_moments_symmetry_and_equal_indices():
 
 
 def test_calc_other_moments_selection_and_values():
-    rng = np.random.default_rng(7)
     # 2D data as required by other_moments
-    data = rng.normal(size=(400, 2))
+    data = np.random.normal(size=(400, 2))
 
     max_order = 4
-    np.random.seed(999)
     vals, errs = calc_other_moments(data, max_order=max_order, n_bins=250)
 
     # Determine expected (n,m) pairs: 1<=m<=n, n+m even, n+m<=max_order
@@ -153,15 +145,13 @@ def test_calc_other_moments_selection_and_values():
 
 
 def test_bootstrap_estimator_vector_observable():
-    rng = np.random.default_rng(123)
-    data2 = rng.normal(size=(300, 2))
+    data2 = np.random.normal(size=(300, 2))
 
     # Observable returns a real 2-vector [mean_x, mean_y]
     def vec_obs(d):
         mu = np.mean(d, axis=0)  # shape (2,)
         return mu
 
-    np.random.seed(0)
     mean_v, err_v = bootstrap_estimator(data2, vec_obs, n_bins=200)
 
     assert mean_v.shape == (2,)
