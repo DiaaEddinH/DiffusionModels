@@ -64,11 +64,6 @@ def make_loader_with_labels(batch_size=2, n_batches=3):
     return loader
 
 
-# ------------------------
-# Core tests (original)
-# ------------------------
-
-
 def test_init_loads_existing_checkpoint_and_sets_paths(tmp_path):
     device = torch.device("cpu")
 

@@ -280,7 +280,9 @@ class UNet(torch.nn.Module):
         )
 
         self.act = activation
-        self.final = ws_convT(2 * channels[0], in_channels, kernel_size=3, device=device)
+        self.final = ws_convT(
+            2 * channels[0], in_channels, kernel_size=3, device=device
+        )
 
     def forward(self, *inputs: tuple):
         return self._forward_impl(*inputs)

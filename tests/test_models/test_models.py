@@ -39,8 +39,7 @@ def make_batch(n=4, d=3, device=None):
 
 def test_ema_update_and_restore():
     set_seed(123)
-    net = TinyNet(dim=3)
-    model = nn.Sequential(net)  # anything with named_parameters
+    model = TinyNet(dim=3)
     ema = EMA(model, decay=0.5)
 
     # initial shadow copied

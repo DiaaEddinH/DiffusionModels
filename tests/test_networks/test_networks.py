@@ -163,7 +163,7 @@ def test_unet_forward_shape():
     x = torch.randn(2, 2, 8, 8)
     t = torch.randn(2)
     y = net(x, t)
-    assert y.shape == (2, 1, 8, 8)
+    assert y.shape == (2, 2, 8, 8)
 
 
 def test_linear_attention_forward_shape_and_finite():
@@ -191,4 +191,4 @@ def test_unet_with_attention_forward_shape():
     x = torch.randn(1, 2, 8, 8)
     t = torch.randn(1)
     y = net(x, t)
-    assert y.shape == (1, 1, 8, 8)
+    assert y.shape == (1, 2, 8, 8)

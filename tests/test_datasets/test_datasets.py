@@ -9,9 +9,9 @@ from src.datasets.datasets import (
     DoublePeak,
     DoublePeakMuConditioned,
     DoublePeakMuDiscrete,
-    QuarticCL,
-    Phi4Dataset,
-    datasets_dir,
+    # QuarticCL,                # moved to local import inside its test
+    # Phi4Dataset,              # moved to local import inside its tests
+    # datasets_dir,             # not needed here
 )
 
 
@@ -181,6 +181,11 @@ def ensure_data_raw(tmp_path, monkeypatch):
 
 
 def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
+    # Import from the already monkeypatched module so we don't touch real data
+    from src.datasets import datasets as datasets_module
+
+    QuarticCL = datasets_module.QuarticCL
+
     raw_dir: Path = ensure_data_raw
     file_path = raw_dir / "cl_K111_ccc.dat"
 
@@ -213,6 +218,11 @@ def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
 
 
 def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
+    # Import from the already monkeypatched module so we don't touch real data
+    from src.datasets import datasets as datasets_module
+
+    Phi4Dataset = datasets_module.Phi4Dataset
+
     raw_dir: Path = ensure_data_raw
     file_path = raw_dir / "cfgs_L32_k0.4_l0.022_10k.npy"
 
@@ -235,6 +245,11 @@ def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
 
 
 def test_phi4_len_and_getitem(ensure_data_raw):
+    # Import from the already monkeypatched module so we don't touch real data
+    from src.datasets import datasets as datasets_module
+
+    Phi4Dataset = datasets_module.Phi4Dataset
+
     raw_dir: Path = ensure_data_raw
     file_path = raw_dir / "cfgs_L32_k0.4_l0.022_10k.npy"
 
