@@ -10,12 +10,6 @@ clean_environment.sh
 !example_config.yaml
 configs/*.yaml
 !configs/example_config.yaml
-logs/
-outputs/
-data/
-models/
-results/
-runs/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints
