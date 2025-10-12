@@ -1,7 +1,10 @@
-from math import pi, log, comb
+from math import log, comb
 import numpy as np
 import torch
 
+# -----------------------------
+# Mixture of Gaussians constants
+# -----------------------------
 m_value = 1.0
 SIGMA = 0.25
 VAR = SIGMA * SIGMA
@@ -14,26 +17,134 @@ MEAN2_X = -m_value
 MEAN2_Y = m_value
 
 
-def bootstrap(data, n_boot=100):
+# -----------------------------
+# Bootstrap utilities
+# -----------------------------
+def bootstrap_estimator(data, observable, n_bins=100):
+    """
+    Generic bootstrap estimator.
+    Args:
+        data (ndarray): Input data (N, ...) where the first dim indexes samples
+        observable (callable): Function to apply to bootstrap samples; returns scalar or vector
+        n_bins (int): Number of bootstrap resamples
+    Returns:
+        mean, error (floats or arrays)
+    """
     n_samples = len(data)
-    boots = []
+    bins = []
 
-    for i in range(n_boot):
+    for _ in range(n_bins):
+        bin_choice = np.random.choice(n_samples, size=n_samples, replace=True)
+        bins.append(observable(data[bin_choice]))
 
-        boot_sample = data[np.random.choice(n_samples, size=n_samples, replace=True)]
-        boots.append(boot_sample.mean(0))
+    bins = np.squeeze(bins)
+    if np.iscomplexobj(bins):
+        # Represent complex-valued observable as [real, imag]
+        bins = np.stack([bins.real, bins.imag], axis=-1)
+    mean = np.mean(bins, axis=0)
+    # Unbiased estimate of the std across bootstrap replicas
+    error = np.sqrt(np.sum((bins - mean) ** 2, axis=0) / (n_bins - 1))
 
-    means = np.mean(boots, axis=0)
-    errors = np.std(boots, axis=0)
-
-    return means, errors
+    return mean, error
 
 
+def bootstrap(data, n_boot=100):
+    """Compatibility wrapper: bootstrap of the mean observable.
+
+    Returns:
+        means, errors of the sample mean per column (if 2D) or scalar (if 1D).
+    """
+    return bootstrap_estimator(data, lambda d: np.mean(d, axis=0), n_bins=n_boot)
+
+
+# -----------------------------
+# Moment and cumulant utilities
+# -----------------------------
 def moment(data, order, axis=0, center=None):
-    # TODO check comment in test_order_zero_returns_one and test_all_equal_returns_zero_for_order_ge1
+    """Compute the central moment of given order along an axis.
+
+    Note: When center is None, it is computed as np.mean(data, axis=axis).
+    The broadcasting semantics match NumPy's default for (data - center).
+    """
     if center is None:
-        center = np.mean(data, axis=axis)
+        center = np.mean(data, axis=axis, keepdims=True)
     return np.mean((data - center) ** order, axis=axis)
+
+
+# Cumulant definitions up to 8th order in terms of central moments
+kappa_fn = {
+    1: lambda x: moment(x, 1),
+    2: lambda x: moment(x, 2),
+    3: lambda x: moment(x, 3),
+    4: lambda x: moment(x, 4) - 3 * moment(x, 2) ** 2,
+    5: lambda x: moment(x, 5) - 10 * moment(x, 2) * moment(x, 3),
+    6: lambda x: moment(x, 6)
+    - 15 * moment(x, 2) * moment(x, 4)
+    + 30 * moment(x, 2) ** 3,
+    7: lambda x: moment(x, 7)
+    - 21 * moment(x, 2) * moment(x, 5)
+    - 35 * moment(x, 4) * moment(x, 3)
+    + 210 * moment(x, 3) * moment(x, 2) ** 2,
+    8: lambda x: moment(x, 8)
+    - 28 * moment(x, 2) * moment(x, 6)
+    - 35 * moment(x, 4) ** 2
+    + 420 * moment(x, 4) * moment(x, 2) ** 2
+    - 630 * moment(x, 2) ** 4,
+}
+
+
+def calc_moments(data, max_order=8, n_bins=100):
+    """Compute bootstrap-estimated raw moments E[X^n] for n=1..max_order."""
+    vals, errs = [], []
+    for n in range(1, max_order + 1):
+        obs = lambda d, n=n: np.mean(d**n, axis=0)  # closure
+        val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
+        vals.append(val)
+        errs.append(err)
+    return np.array(vals), np.array(errs)
+
+
+def calc_cumulants(data, max_order=8, n_bins=100):
+    """Compute bootstrap-estimated cumulants up to max_order using kappa_fn."""
+    vals, errs = [], []
+    for n in range(1, max_order + 1):
+        obs = kappa_fn[n]
+        val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
+        vals.append(val)
+        errs.append(err)
+    return np.array(vals), np.array(errs)
+
+
+# Mixed moments utilities
+
+
+def other_moments(data, n, m, axis=0):
+    x, y = data.T
+    if n == m:
+        return np.mean(x**n * y**m, axis=axis)
+    return np.mean(x**n * y**m + x**m * y**n, axis=axis)
+
+
+def calc_other_moments(data, max_order=8, n_bins=100):
+    """Compute bootstrap-estimated mixed moments with symmetry constraints."""
+    vals, errs = [], []
+    for n in range(1, max_order + 1):
+        for m in range(1, n + 1):
+            if (n + m) % 2 != 0:
+                continue
+            if (n + m) > max_order:
+                continue
+
+            obs = lambda d, n=n, m=m: other_moments(d, n, m, axis=0)  # closure
+            val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
+            vals.append(val)
+            errs.append(err)
+    return np.array(vals), np.array(errs)
+
+
+# -----------------------------
+# Log-density and MCMC samplers
+# -----------------------------
 
 
 def logpdf_component_batch(x0, x1, mean_x, mean_y):
@@ -230,6 +341,11 @@ def torch_mh_parallel(
     return torch.stack([xs_all, ys_all], dim=-1), acc_rate
 
 
+# -----------------------------
+# Analytic and helper math
+# -----------------------------
+
+
 def raw_moments(v, max_k):
     out = np.zeros(max_k + 1)
     k = 1
@@ -354,6 +470,9 @@ def analytic_cumulants(max_k, m_abs, sigma):
     return K
 
 
+# Convenience functions retained for completeness (not used in tests)
+
+
 def print_table(label, raw_s, raw_t, cum_s, cum_t, max_k):
     print(label + " (moments & cumulants, orders 1..%d):" % max_k)
     header = "order | raw_sample         | raw_analytic        | cumulant_sample     | cumulant_analytic"
@@ -395,48 +514,3 @@ def run_mcmc_ebm(model):
     print(f"Acc. rate: {acc_rate:.4f}")
 
     return cfgs_all
-
-
-def main():
-    n_chains = 10000
-    n_keep_per_chain = 100  # kept samples per chain
-    burn_in = 5000
-    thin = 100  # proposals between kept samples
-    seed = 123
-    init_prop_std = 0.8
-    adapt = True
-    adapt_window = 500  # adaptation interval during burn-in
-
-    samples, acc_rate = mh_parallel(
-        n_chains=n_chains,
-        n_keep=n_keep_per_chain,
-        burn_in=burn_in,
-        thin=thin,
-        seed=seed,
-        init_prop_std=init_prop_std,
-        adapt=adapt,
-        adapt_window=adapt_window,
-    )
-
-    xs_all = samples[:, 0]
-    ys_all = samples[:, 1]
-
-    max_k = 8
-
-    # X stats
-    rm_x = raw_moments(xs_all, max_k)
-    mu_x, cm_x = central_moments(xs_all, max_k)
-    cu_x = cumulants_from_central(mu_x, cm_x, max_k)
-    true_raw_x = analytic_raw_marginal(max_k, m_value, SIGMA)
-    true_cu_x = analytic_cumulants(max_k, m_value, SIGMA)
-
-    # Y stats (symmetric)
-    rm_y = raw_moments(ys_all, max_k)
-    mu_y, cm_y = central_moments(ys_all, max_k)
-    cu_y = cumulants_from_central(mu_y, cm_y, max_k)
-    true_raw_y = analytic_raw_marginal(max_k, m_value, SIGMA)
-    true_cu_y = analytic_cumulants(max_k, m_value, SIGMA)
-
-    print("Acceptance rate (post burn-in proposals): {:.4f}\n".format(acc_rate))
-    print_table("X", rm_x, true_raw_x, cu_x, true_cu_x, max_k)
-    print_table("Y", rm_y, true_raw_y, cu_y, true_cu_y, max_k)
