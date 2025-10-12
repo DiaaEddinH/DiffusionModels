@@ -23,8 +23,7 @@ jobs:
         uses: mamba-org/setup-micromamba@v2
         with:
           environment-file: environment.yml
-          # Must match the "name:" field in your environment.yml
-          activate-environment: score_env
+          activate-environment: score_env   # must match name: in environment.yml
           cache-environment: true
           cache-downloads: true
           init-shell: bash
@@ -34,12 +33,7 @@ jobs:
         run: |
           which python
           python --version
-          python - <<'PY'
-import importlib.util
-for m in ("pytest", "torch"):
-    spec = importlib.util.find_spec(m)
-    print(f"{m}: {'found' if spec else 'missing'}")
-PY
+          python -c "import importlib.util as u, sys; mods=('pytest','torch'); print(' '.join(f\"{m}:\"+('found' if u.find_spec(m) else 'missing') for m in mods)); print('Exec:', sys.executable)"
 
       - name: Install project (editable) if present
         shell: bash -l {0}
