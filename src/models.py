@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 from torch.nn import Module
 
-from .noise_scheduler import get_noise_schedule
+from noise_scheduler import Schedule, GeometricSchedule
 
 
 class EMA:
@@ -46,9 +46,7 @@ class ScoreModel(Module):
     def __init__(
         self,
         network: Module,
-        schedule: str = "geometric",
-        sigma_min: float = 0.02,
-        sigma_max: float = 10.0,
+        schedule: Optional[Schedule] = None,
         device: str = None,
     ) -> None:
         super().__init__()
@@ -57,16 +55,13 @@ class ScoreModel(Module):
         self.history = []
         self.dims = None
         self.ema = EMA(self)
-
-        get_noise_schedule(
-            self, schedule_type=schedule, sigma_min=sigma_min, sigma_max=sigma_max
-        )
+        self.schedule = schedule or GeometricSchedule()
 
     def forward(self, x: Tensor, t: Tensor, *labels):
         d = (x.dim() - 1) * [
             None,
         ]
-        return self.network(x, t, *labels) / self.stddev(t)[:, *d]
+        return self.network(x, t, *labels) / self.schedule.stddev(t)[:, *d]
 
     def loss_fn(self, batch, *labels, eps: float = 1e-5):
         if self.dims is None:
@@ -78,7 +73,7 @@ class ScoreModel(Module):
         z = torch.randn_like(batch)
 
         random_t = torch.rand(batch.shape[0], device=self.device) * (1.0 - eps) + eps
-        mean, std = self.get_mean_stddev(batch, random_t)
+        mean, std = self.schedule.mean_stddev(batch, random_t)
         std = std[:, *d]
 
         perturbed_x = mean + z * std
@@ -119,16 +114,18 @@ class EnergyBasedModel(ScoreModel):
     def __init__(
         self,
         network: Module,
-        schedule: str = "geometric",
-        sigma_min: float = 0.02,
-        sigma_max: float = 10,
+        schedule: Optional[Schedule] = None,
         device: str = None,
     ):
-        super().__init__(network, schedule, sigma_min, sigma_max, device)
+        super().__init__(network, schedule, device)
 
     def energy(self, x: Tensor, t: Tensor, *labels):
         score = self.network(x, t, *labels)
-        return -0.5 * torch.sum(score**2, dim=tuple(range(1, x.dim()))) / self.stddev(t)
+        return (
+            -0.5
+            * torch.sum(score**2, dim=tuple(range(1, x.dim())))
+            / self.schedule.stddev(t)
+        )
 
     def forward(self, x: Tensor, t: Tensor, *labels, create_graph=False):
         x.requires_grad_(True)
@@ -152,7 +149,7 @@ class EnergyBasedModel(ScoreModel):
         z = torch.randn_like(batch)
 
         random_t = torch.rand(batch.shape[0], device=self.device) * (1.0 - eps) + eps
-        mean, std = self.get_mean_stddev(batch, random_t)
+        mean, std = self.schedule.mean_stddev(batch, random_t)
         std = std[:, *d]
 
         perturbed_x = mean + z * std

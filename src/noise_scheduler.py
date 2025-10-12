@@ -1,48 +1,61 @@
+from __future__ import annotations
+
+import math
+from abc import ABC
+from typing import Tuple
+
 import torch
-from math import log
 
 
-def get_noise_schedule(obj, schedule_type="geometric", **kwargs):
-    """
-    Returns a tuple of two functions:
-            - get_mean_std(x, t)
-            - diffusion_coeff(t)
-    schedule_type: str, one of ["geometric", "linear", "cosine"]
-    kwargs: parameters for each schedule
-    """
-    if schedule_type == "geometric":
-        sigma_min = kwargs.get("sigma_min", 0.02)
-        sigma_max = kwargs.get("sigma_max", 10.0)
-        logsigma = log(sigma_max / sigma_min)
+class Schedule(ABC):
 
-        obj.stddev = lambda t: sigma_min * torch.sqrt(
-            (torch.exp(2 * t * logsigma) - 1) / (2 * logsigma)
-        )
-        obj.diffusion_coeff = lambda t: sigma_min * torch.exp(t * logsigma)
+    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
 
-    elif schedule_type == "linear":
-        sigma_min = kwargs.get("sigma_min", 0.02)
-        sigma_max = kwargs.get("sigma_max", 10.0)
+    """Strategy interface for noise schedules."""
 
-        obj.stddev = lambda t: sigma_min + (sigma_max - sigma_min) * t
-        obj.diffusion_coeff = lambda t: (sigma_max - sigma_min) * torch.ones_like(t)
+    def stddev(self, t: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
 
-    # elif schedule_type == "cosine":
-    #     sigma_min = kwargs.get("sigma_min", 0.02)
-    #     sigma_max = kwargs.get("sigma_max", 10.0)
-    #     PI = acos(-1.0)
+    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
 
-    #     def get_mean_std(x, t):
-    #         cos_term = torch.cos(t * PI / 2)
-    #         std = sigma_min + (sigma_max - sigma_min) * (1 - cos_term)
-    #         mean = x
-    #         return mean, std
+    def mean_stddev(
+        self, x: torch.Tensor, t: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return x, self.stddev(t)
 
-    #     def diffusion_coeff(t):
-    #         cos_term = torch.cos(t * PI / 2)
-    #         return sigma_min + (sigma_max - sigma_min) * (1 - cos_term)
 
-    else:
-        raise ValueError(f"Unknown schedule_type: {schedule_type}")
+class GeometricSchedule(Schedule):
 
-    obj.get_mean_stddev = lambda x, t: (x, obj.stddev(t))
+    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
+        super().__init__(sigma_min, sigma_max)
+
+    @property
+    def _logsigma(self) -> float:
+        return math.log(self.sigma_max / self.sigma_min)
+
+    def stddev(self, t: torch.Tensor) -> torch.Tensor:
+        L = self._logsigma
+        return self.sigma_min * torch.sqrt((torch.exp(2 * t * L) - 1) / (2 * L))
+
+    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
+        return self.sigma_min * torch.exp(t * self._logsigma)
+
+
+class LinearSchedule(Schedule):
+
+    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
+        super().__init__(sigma_min, sigma_max)
+
+    @property
+    def _delta(self) -> float:
+        return self.sigma_max - self.sigma_min
+
+    def stddev(self, t: torch.Tensor) -> torch.Tensor:
+        return self.sigma_min + self._delta * t
+
+    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
+        # Constant w.r.t. t
+        return self._delta * torch.ones_like(t)

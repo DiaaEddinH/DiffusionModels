@@ -5,6 +5,7 @@ from torch import nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import StepLR
 
+from noise_scheduler import GeometricSchedule, LinearSchedule
 from src.models import EMA, ScoreModel, EnergyBasedModel, FlowMatchingModel
 
 
@@ -75,7 +76,7 @@ def test_ema_update_and_restore():
 
 
 @pytest.mark.parametrize(
-    "schedule", ["geometric", "linear"]
+    "schedule", [GeometricSchedule(), LinearSchedule()]
 )  # exercise both schedules via ScoreModel
 def test_scoremodel_forward_and_loss_and_trainstep(schedule):
     d = 4
