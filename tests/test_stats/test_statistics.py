@@ -18,7 +18,7 @@ from src import statistics as ms
 # ---------------- Pytest-style tests (from former test_stats.py) ----------------
 
 
-def test_bootstrap_estimator_real_and_complex():
+def test_bootstrap_estimator_real_and_complex(seed_rng):
     data = np.random.normal(loc=1.5, scale=0.7, size=200)
 
     # Real-valued observable: mean
@@ -36,7 +36,6 @@ def test_bootstrap_estimator_real_and_complex():
         m = np.mean(d)
         return m + 1j * (m - 1.0)
 
-    np.random.seed(0)
     mean_c, err_c = bootstrap_estimator(data, complex_obs, n_bins=150)
     # Should return 1D vectors [real, imag]
     assert mean_c.shape == (2,)

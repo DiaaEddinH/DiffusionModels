@@ -8,8 +8,6 @@ from torch.optim.lr_scheduler import StepLR
 from src.models import EMA, ScoreModel, EnergyBasedModel, FlowMatchingModel
 
 
-
-
 class TinyNet(nn.Module):
     """A tiny network that is easy to reason about in tests.
 

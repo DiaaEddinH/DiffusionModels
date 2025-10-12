@@ -32,28 +32,22 @@ def bootstrap_estimator(data, observable, n_bins=100):
     """
     n_samples = len(data)
     bins = []
-
     for _ in range(n_bins):
-        bin_choice = np.random.choice(n_samples, size=n_samples, replace=True)
-        bins.append(observable(data[bin_choice]))
+        idx = np.random.choice(n_samples, size=n_samples, replace=True)
+        bins.append(observable(data[idx]))
 
-    bins = np.squeeze(bins)
+    bins = np.asarray(bins)  # predictable shape handling
     if np.iscomplexobj(bins):
-        # Represent complex-valued observable as [real, imag]
         bins = np.stack([bins.real, bins.imag], axis=-1)
-    mean = np.mean(bins, axis=0)
-    # Unbiased estimate of the std across bootstrap replicas
-    error = np.sqrt(np.sum((bins - mean) ** 2, axis=0) / (n_bins - 1))
 
+    mean = np.mean(bins, axis=0)
+    # Unbiased std across bootstrap replicas
+    error = np.sqrt(np.sum((bins - mean) ** 2, axis=0) / max(1, (n_bins - 1)))
     return mean, error
 
 
 def bootstrap(data, n_boot=100):
-    """Compatibility wrapper: bootstrap of the mean observable.
-
-    Returns:
-        means, errors of the sample mean per column (if 2D) or scalar (if 1D).
-    """
+    """Bootstrap of the mean observable (compat wrapper)."""
     return bootstrap_estimator(data, lambda d: np.mean(d, axis=0), n_bins=n_boot)
 
 
@@ -61,43 +55,66 @@ def bootstrap(data, n_boot=100):
 # Moment and cumulant utilities
 # -----------------------------
 def moment(data, order, axis=0, center=None):
-    """Compute the central moment of given order along an axis.
-
-    Note: When center is None, it is computed as np.mean(data, axis=axis).
-    The broadcasting semantics match NumPy's default for (data - center).
-    """
+    """Central moment of given order along an axis."""
     if center is None:
         center = np.mean(data, axis=axis, keepdims=True)
     return np.mean((data - center) ** order, axis=axis)
 
 
-# Cumulant definitions up to 8th order in terms of central moments
-kappa_fn = {
-    1: lambda x: moment(x, 1),
-    2: lambda x: moment(x, 2),
-    3: lambda x: moment(x, 3),
-    4: lambda x: moment(x, 4) - 3 * moment(x, 2) ** 2,
-    5: lambda x: moment(x, 5) - 10 * moment(x, 2) * moment(x, 3),
-    6: lambda x: moment(x, 6)
-    - 15 * moment(x, 2) * moment(x, 4)
-    + 30 * moment(x, 2) ** 3,
-    7: lambda x: moment(x, 7)
-    - 21 * moment(x, 2) * moment(x, 5)
-    - 35 * moment(x, 4) * moment(x, 3)
-    + 210 * moment(x, 3) * moment(x, 2) ** 2,
-    8: lambda x: moment(x, 8)
-    - 28 * moment(x, 2) * moment(x, 6)
-    - 35 * moment(x, 4) ** 2
-    + 420 * moment(x, 4) * moment(x, 2) ** 2
-    - 630 * moment(x, 2) ** 4,
-}
+def _central_moments_vector(x, max_order, axis=0):
+    """Return central moments m_k for k=1..max_order as an array-like where idx=k gives m_k."""
+    mu = np.mean(x, axis=axis)
+    c = x - mu
+    out = np.zeros(max_order + 1, dtype=float)
+    for k in range(1, max_order + 1):
+        out[k] = np.mean(c**k, axis=axis)
+    return mu, out  # m1 (mean) returned separately for clarity
+
+
+def _cumulant_from_central_moments(mu, C, n):
+    """Single source of truth for cumulant identities (up to 8th) using central moments C."""
+    # C[k] is the k-th central moment; mu is mean (C[1] == 0 by definition)
+    if n == 1:
+        return mu
+    if n == 2:
+        return C[2]
+    if n == 3:
+        return C[3]
+    if n == 4:
+        m2, m4 = C[2], C[4]
+        return m4 - 3.0 * m2 * m2
+    if n == 5:
+        m2, m3 = C[2], C[3]
+        m5 = C[5] if len(C) > 5 else 0.0
+        return m5 - 10.0 * m3 * m2
+    if n == 6:
+        m2, m4 = C[2], C[4]
+        m6 = C[6] if len(C) > 6 else 0.0
+        return m6 - 15.0 * m4 * m2 + 30.0 * (m2**3)
+    if n == 7:
+        m2, m3, m4 = C[2], C[3], C[4]
+        m5 = C[5] if len(C) > 5 else 0.0
+        m7 = C[7] if len(C) > 7 else 0.0
+        return m7 - 21.0 * m5 * m2 - 35.0 * m4 * m3 + 210.0 * m3 * (m2**2)
+    if n == 8:
+        m2, m4 = C[2], C[4]
+        m6 = C[6] if len(C) > 6 else 0.0
+        m8 = C[8] if len(C) > 8 else 0.0
+        return (
+            m8
+            - 28.0 * m6 * m2
+            - 35.0 * (m4**2)
+            + 420.0 * m4 * (m2**2)
+            - 630.0 * (m2**4)
+        )
+    raise ValueError("Cumulants supported only for orders 1..8")
 
 
 def calc_moments(data, max_order=8, n_bins=100):
-    """Compute bootstrap-estimated raw moments E[X^n] for n=1..max_order."""
+    """Bootstrap-estimated raw moments E[X^n] for n=1..max_order."""
     vals, errs = [], []
     for n in range(1, max_order + 1):
-        obs = lambda d, n=n: np.mean(d**n, axis=0)  # closure
+        obs = lambda d, n=n: np.mean(d**n, axis=0)
         val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
         vals.append(val)
         errs.append(err)
@@ -105,28 +122,38 @@ def calc_moments(data, max_order=8, n_bins=100):
 
 
 def calc_cumulants(data, max_order=8, n_bins=100):
-    """Compute bootstrap-estimated cumulants up to max_order using kappa_fn."""
+    """Bootstrap-estimated cumulants up to max_order using a single identity source."""
+
+    def obs(d, n):
+        mu, C = _central_moments_vector(d, max_order, axis=0)
+        return _cumulant_from_central_moments(mu, C, n)
+
     vals, errs = [], []
     for n in range(1, max_order + 1):
-        obs = kappa_fn[n]
-        val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
+        val, err = bootstrap_estimator(data, lambda d, n=n: obs(d, n), n_bins=n_bins)
         vals.append(val)
         errs.append(err)
     return np.array(vals), np.array(errs)
 
 
+# -----------------------------
 # Mixed moments utilities
-
-
-def other_moments(data, n, m, axis=0):
-    x, y = data.T
+# -----------------------------
+def other_moments(data, n, m):
+    """
+    Mixed moments for a symmetric 2D distribution.
+    Assumes data shape (N, 2). Returns E[x^n y^m] if n==m,
+    else E[x^n y^m + x^m y^n].
+    """
+    x = data[:, 0]
+    y = data[:, 1]
     if n == m:
-        return np.mean(x**n * y**m, axis=axis)
-    return np.mean(x**n * y**m + x**m * y**n, axis=axis)
+        return np.mean((x**n) * (y**m))
+    return np.mean(x**n * y**m + x**m * y**n)
 
 
 def calc_other_moments(data, max_order=8, n_bins=100):
-    """Compute bootstrap-estimated mixed moments with symmetry constraints."""
+    """Bootstrap-estimated mixed moments with symmetry constraints."""
     vals, errs = [], []
     for n in range(1, max_order + 1):
         for m in range(1, n + 1):
@@ -134,9 +161,9 @@ def calc_other_moments(data, max_order=8, n_bins=100):
                 continue
             if (n + m) > max_order:
                 continue
-
-            obs = lambda d, n=n, m=m: other_moments(d, n, m, axis=0)  # closure
-            val, err = bootstrap_estimator(data, obs, n_bins=n_bins)
+            val, err = bootstrap_estimator(
+                data, lambda d, n=n, m=m: other_moments(d, n, m), n_bins=n_bins
+            )
             vals.append(val)
             errs.append(err)
     return np.array(vals), np.array(errs)
@@ -145,8 +172,6 @@ def calc_other_moments(data, max_order=8, n_bins=100):
 # -----------------------------
 # Log-density and MCMC samplers
 # -----------------------------
-
-
 def logpdf_component_batch(x0, x1, mean_x, mean_y):
     dx0 = x0 - mean_x
     dx1 = x1 - mean_y
@@ -177,14 +202,10 @@ def mh_parallel(
     x0 = np.empty(n_chains)
     x1 = np.empty(n_chains)
     half = n_chains // 2
-    x0[:half] = MEAN1_X
-    x1[:half] = MEAN1_Y
-    x0[half:] = MEAN2_X
-    x1[half:] = MEAN2_Y
+    x0[:half], x1[:half] = MEAN1_X, MEAN1_Y
+    x0[half:], x1[half:] = MEAN2_X, MEAN2_Y
 
-    prop_std = np.empty(n_chains)
-    prop_std[:] = float(init_prop_std)
-
+    prop_std = np.full(n_chains, float(init_prop_std))
     cur_lp = logpdf_mixture_batch(x0, x1)
 
     # Burn-in (with simple adaptation every adapt_window steps)
@@ -220,14 +241,12 @@ def mh_parallel(
     xs_all = np.empty(n_keep * n_chains)
     ys_all = np.empty(n_keep * n_chains)
     base = 0
-
     accepts = 0.0
     proposals = 0.0
 
     kept = 0
     while kept < n_keep:
-        s = 0
-        while s < thin:
+        for _ in range(thin):
             prop0 = x0 + rng.normal(0.0, prop_std, size=n_chains)
             prop1 = x1 + rng.normal(0.0, prop_std, size=n_chains)
             prop_lp = logpdf_mixture_batch(prop0, prop1)
@@ -241,9 +260,7 @@ def mh_parallel(
 
             accepts += float(np.sum(accept))
             proposals += float(n_chains)
-            s += 1
 
-        # store one kept sample from every chain
         xs_all[base : base + n_chains] = x0
         ys_all[base : base + n_chains] = x1
         base += n_chains
@@ -263,17 +280,11 @@ def torch_mh_parallel(
     x0 = torch.empty(n_chains, device=device)
     x1 = torch.empty(n_chains, device=device)
     half = n_chains // 2
-
-    x0[:half] = MEAN1_X
-    x1[:half] = MEAN1_Y
-    x0[half:] = MEAN2_X
-    x1[half:] = MEAN2_Y
+    x0[:half], x1[:half] = MEAN1_X, MEAN1_Y
+    x0[half:], x1[half:] = MEAN2_X, MEAN2_Y
 
     prop_std = torch.full((n_chains,), float(init_prop_std), device=device)
-
-    cur_lp = logpdf_batch(
-        x0, x1, model=model
-    )  # <-- ensure this returns a torch tensor on `device`
+    cur_lp = logpdf_batch(x0, x1, model=model)
 
     acc_window = torch.zeros(n_chains, device=device)
     steps_in_window = 0
@@ -305,8 +316,8 @@ def torch_mh_parallel(
             steps_in_window = 0
 
     # --- Sampling ---
-    xs_all = torch.empty(n_keep * n_chains)
-    ys_all = torch.empty(n_keep * n_chains)
+    xs_all = torch.empty(n_keep * n_chains, dtype=torch.float32, device="cpu")
+    ys_all = torch.empty(n_keep * n_chains, dtype=torch.float32, device="cpu")
 
     base = 0
     accepts = 0.0
@@ -314,8 +325,7 @@ def torch_mh_parallel(
     kept = 0
 
     while kept < n_keep:
-        s = 0
-        while s < thin:
+        for _ in range(thin):
             prop0 = x0 + torch.randn(n_chains, device=device) * prop_std
             prop1 = x1 + torch.randn(n_chains, device=device) * prop_std
             prop_lp = logpdf_batch(prop0, prop1, model=model)
@@ -329,29 +339,23 @@ def torch_mh_parallel(
 
             accepts += float(accept.sum().item())
             proposals += float(n_chains)
-            s += 1
 
-        xs_all[base : base + n_chains] = x0.cpu()
-        ys_all[base : base + n_chains] = x1.cpu()
+        xs_all[base : base + n_chains] = x0.detach().cpu()
+        ys_all[base : base + n_chains] = x1.detach().cpu()
         base += n_chains
         kept += 1
 
     acc_rate = accepts / proposals if proposals > 0.0 else 0.0
-
     return torch.stack([xs_all, ys_all], dim=-1), acc_rate
 
 
 # -----------------------------
 # Analytic and helper math
 # -----------------------------
-
-
 def raw_moments(v, max_k):
     out = np.zeros(max_k + 1)
-    k = 1
-    while k <= max_k:
+    for k in range(1, max_k + 1):
         out[k] = float(np.mean(v**k))
-        k += 1
     return out
 
 
@@ -359,56 +363,19 @@ def central_moments(v, max_k):
     mu = float(np.mean(v))
     c = v - mu
     out = np.zeros(max_k + 1)
-    k = 1
-    while k <= max_k:
+    for k in range(1, max_k + 1):
         out[k] = float(np.mean(c**k))
-        k += 1
     return [mu, out]
 
 
 def cumulants_from_central(mu, C, max_k):
+    """
+    Delegate to the single identity source to avoid duplication.
+    Returns K[0..max_k], where entries 1..max_k are filled.
+    """
     K = np.zeros(max_k + 1)
-    if max_k >= 1:
-        K[1] = mu
-    if max_k >= 2:
-        m2 = C[2]
-        K[2] = m2
-    if max_k >= 3:
-        m3 = C[3]
-        K[3] = m3
-    if max_k >= 4:
-        m2 = C[2]
-        m4 = C[4]
-        K[4] = m4 - 3.0 * m2 * m2
-    if max_k >= 5:
-        m2 = C[2]
-        m3 = C[3]
-        m5 = C[5] if len(C) > 5 else 0.0
-        K[5] = m5 - 10.0 * m3 * m2
-    if max_k >= 6:
-        m2 = C[2]
-        m4 = C[4]
-        m6 = C[6] if len(C) > 6 else 0.0
-        K[6] = m6 - 15.0 * m4 * m2 + 30.0 * (m2**3)
-    if max_k >= 7:
-        m2 = C[2]
-        m3 = C[3]
-        m4 = C[4]
-        m5 = C[5] if len(C) > 5 else 0.0
-        m7 = C[7] if len(C) > 7 else 0.0
-        K[7] = m7 - 21.0 * m5 * m2 - 35.0 * m4 * m3 + 210.0 * m3 * (m2**2)
-    if max_k >= 8:
-        m2 = C[2]
-        m4 = C[4]
-        m6 = C[6] if len(C) > 6 else 0.0
-        m8 = C[8] if len(C) > 8 else 0.0
-        K[8] = (
-            m8
-            - 28.0 * m6 * m2
-            - 35.0 * (m4**2)
-            + 420.0 * m4 * (m2**2)
-            - 630.0 * (m2**4)
-        )
+    for n in range(1, max_k + 1):
+        K[n] = _cumulant_from_central_moments(mu, C, n)
     return K
 
 
@@ -433,19 +400,14 @@ def gaussian_even_moment(order_even, sigma):
 
 def analytic_raw_marginal(max_k, m_abs, sigma):
     R = np.zeros(max_k + 1)
-    k = 1
-    while k <= max_k:
+    for k in range(1, max_k + 1):
         if (k % 2) == 1:
             R[k] = 0.0
         else:
             acc = 0.0
-            i = 0
-            while i <= k:
-                if (i % 2) == 0:
-                    acc += comb(k, i) * (m_abs**i) * gaussian_even_moment(k - i, sigma)
-                i += 1
+            for i in range(0, k + 1, 2):  # only even i contribute
+                acc += comb(k, i) * (m_abs**i) * gaussian_even_moment(k - i, sigma)
             R[k] = acc
-        k += 1
     return R
 
 
@@ -471,22 +433,18 @@ def analytic_cumulants(max_k, m_abs, sigma):
 
 
 # Convenience functions retained for completeness (not used in tests)
-
-
 def print_table(label, raw_s, raw_t, cum_s, cum_t, max_k):
     print(label + " (moments & cumulants, orders 1..%d):" % max_k)
     header = "order | raw_sample         | raw_analytic        | cumulant_sample     | cumulant_analytic"
     print(header)
     print("-" * len(header))
-    k = 1
-    while k <= max_k:
+    for k in range(1, max_k + 1):
         rs = raw_s[k] if k < len(raw_s) else float("nan")
         rt = raw_t[k] if k < len(raw_t) else float("nan")
         cs = cum_s[k] if k < len(cum_s) else float("nan")
         ct = cum_t[k] if k < len(cum_t) else float("nan")
         line = "{:>5d} | {:>18.10f} | {:>18.10f} | {:>18.10f} | {:>18.10f}"
         print(line.format(k, rs, rt, cs, ct))
-        k += 1
     print("")
 
 
@@ -512,5 +470,4 @@ def run_mcmc_ebm(model):
         model=model,
     )
     print(f"Acc. rate: {acc_rate:.4f}")
-
     return cfgs_all
