@@ -1,11 +1,7 @@
 import numpy as np
 from pathlib import Path
 
-from diffusion_models.effects.random_effects import (
-    load_val_err,
-    calc_random_effects,
-    random_effects_from_files,
-)
+from diffusion_models.effects.random_effects import RandomEffectsAnalyser
 
 
 def _make_npz(path: Path, val: np.ndarray, err: np.ndarray):
@@ -23,7 +19,8 @@ def test_load_val_err_reads_multiple_files(tmp_path):
         _make_npz(f, v, e)
         files.append(str(f))
 
-    Y_i, eps_i = load_val_err(files)
+    analyser = RandomEffectsAnalyser.from_file_paths(files)
+    Y_i, eps_i = analyser.Y_i, analyser.eps_i
 
     assert Y_i.shape == (3, 2)
     assert eps_i.shape == (3, 2)
@@ -31,36 +28,13 @@ def test_load_val_err_reads_multiple_files(tmp_path):
     np.testing.assert_allclose(eps_i, np.stack(errs))
 
 
-def test_random_effects_end_to_end_matches_direct_calc(tmp_path):
-    # Construct small 2D data across runs
-    n_runs, m, n = 4, 2, 3
-    Y = np.random.normal(loc=0.0, scale=1.0, size=(n_runs, m, n))
-    # keep errors positive and not tiny
-    eps = np.random.uniform(0.05, 0.5, size=(n_runs, m, n))
-
-    files = []
-    for i in range(n_runs):
-        f = tmp_path / f"arr_{i}.npz"
-        _make_npz(f, Y[i], eps[i])
-        files.append(str(f))
-
-    # Through file API
-    Y_hat_f, s_stat_f, s_sys_f, s_tot_f = random_effects_from_files(files)
-    # Directly from arrays
-    Y_hat_d, s_stat_d, s_sys_d, s_tot_d = calc_random_effects(Y, eps)
-
-    np.testing.assert_allclose(Y_hat_f, Y_hat_d)
-    np.testing.assert_allclose(s_stat_f, s_stat_d)
-    np.testing.assert_allclose(s_sys_f, s_sys_d)
-    np.testing.assert_allclose(s_tot_f, s_tot_d)
-
-
 def test_zero_heterogeneity_reduces_sys_to_zero():
     # All runs have identical Y → between-run variance tau^2 = 0 → sigma_sys_mean = 0
     Y = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
     eps = np.array([[0.1, 0.2, 0.3], [0.2, 0.3, 0.4], [0.3, 0.4, 0.5]])
 
-    Y_hat, sigma_stat, sigma_sys, sigma_tot = calc_random_effects(Y, eps)
+    analyser = RandomEffectsAnalyser(Y, eps)
+    Y_hat, sigma_stat, sigma_sys, sigma_tot = analyser.analyze()
 
     # Mean should equal the common value
     np.testing.assert_allclose(Y_hat, Y[0])
@@ -86,7 +60,8 @@ def test_multidimensional_support():
         ]
     )
 
-    Y_hat, sigma_stat, sigma_sys, sigma_tot = calc_random_effects(Y, eps)
+    analyser = RandomEffectsAnalyser(Y, eps)
+    Y_hat, sigma_stat, sigma_sys, sigma_tot = analyser.analyze()
 
     # Shapes should drop the run dimension
     assert Y_hat.shape == (2, 2)
