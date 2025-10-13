@@ -70,7 +70,7 @@ def _central_moments_vector(x, max_order, axis=0):
     mu = np.mean(x, axis=axis)
     c = x - np.expand_dims(mu, axis=axis)
     # Allocate output to match the reduced shape (same as mu) for each k index
-    out = np.zeros((max_order + 1,) + np.shape(mu), dtype=float)
+    out = np.zeros((max_order + 1,) + np.shape(mu), dtype=c.dtype)
     for k in range(1, max_order + 1):
         out[k] = np.mean(c**k, axis=axis)
     return mu, out  # m1 (mean) returned separately for clarity
@@ -127,11 +127,20 @@ def calc_moments(data, max_order=8, n_bins=100):
 
 
 def calc_cumulants(data, max_order=8, n_bins=100):
-    """Bootstrap-estimated cumulants up to max_order using a single identity source."""
+    """Bootstrap-estimated cumulants up to max_order using a single identity source.
+
+    If `data` is complex, we treat the observable as complex to keep bootstrap
+    shapes consistent across orders. Otherwise, we keep real-valued outputs.
+    """
+    data = np.asarray(data)
+    force_complex = np.iscomplexobj(data)
 
     def obs(d, n):
         mu, C = _central_moments_vector(d, max_order, axis=0)
-        return _cumulant_from_central_moments(mu, C, n)
+        k = _cumulant_from_central_moments(mu, C, n)
+        if force_complex:
+            return np.asarray(k, dtype=np.complex128)
+        return k
 
     vals, errs = [], []
     for n in range(1, max_order + 1):
@@ -147,11 +156,18 @@ def calc_cumulants(data, max_order=8, n_bins=100):
 def other_moments(data, n, m):
     """
     Mixed moments for a symmetric 2D distribution.
-    Assumes data shape (N, 2). Returns E[x^n y^m] if n==m,
-    else E[x^n y^m + x^m y^n].
+    Accepts either:
+      - real array of shape (N, 2) interpreted as [x, y]
+      - complex array of shape (N,) interpreted as x + i y
+    Returns E[x^n y^m] if n==m, else E[x^n y^m + x^m y^n].
     """
-    x = data[:, 0]
-    y = data[:, 1]
+    d = np.asarray(data)
+    if d.ndim == 1 and np.iscomplexobj(d):
+        x = d.real
+        y = d.imag
+    else:
+        x = d[:, 0]
+        y = d[:, 1]
     if n == m:
         return np.mean((x**n) * (y**m))
     return np.mean(x**n * y**m + x**m * y**n)

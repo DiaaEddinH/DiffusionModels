@@ -15,7 +15,7 @@ from pathlib import Path
 # with open(config_path) as f:
 #     cfg = yaml.safe_load(f)
 
-EXPERIMENT_BASE = "GMODEL_EBM" # cfg["file"]  # e.g., "GMODEL_EBM"
+EXPERIMENT_BASE = "QMODEL_EBM" # cfg["file"]  # e.g., "GMODEL_EBM"
 
 # Detect all sample stems
 SAMPLES = [
