@@ -13,6 +13,16 @@ class Schedule(ABC):
     The noise schedule defines how the noise level changes over time.
     """
 
+    sigma_min: float
+    """
+    Minimum standard deviation of the noise.
+    """
+
+    sigma_max: float
+    """
+    Maximum standard deviation of the noise.
+    """
+
     def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
