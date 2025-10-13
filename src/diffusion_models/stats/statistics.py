@@ -62,10 +62,15 @@ def moment(data, order, axis=0, center=None):
 
 
 def _central_moments_vector(x, max_order, axis=0):
-    """Return central moments m_k for k=1..max_order as an array-like where idx=k gives m_k."""
+    """Return central moments m_k for k=1..max_order as an array with shape (max_order+1, ...).
+
+    - mu has the same shape as x with the `axis` reduced (i.e., mean over samples).
+    - out[k] stores the k-th central moment with the same reduced shape as mu.
+    """
     mu = np.mean(x, axis=axis)
-    c = x - mu
-    out = np.zeros(max_order + 1, dtype=float)
+    c = x - np.expand_dims(mu, axis=axis)
+    # Allocate output to match the reduced shape (same as mu) for each k index
+    out = np.zeros((max_order + 1,) + np.shape(mu), dtype=float)
     for k in range(1, max_order + 1):
         out[k] = np.mean(c**k, axis=axis)
     return mu, out  # m1 (mean) returned separately for clarity
