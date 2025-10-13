@@ -44,7 +44,6 @@ class DummyModel(torch.nn.Module):
 
 
 def test_ot_sampler_history_and_timesteps_and_no_grad_and_labels():
-    torch.manual_seed(123)
     model = DummyModel(device="cpu", drift_scale=0.0)  # v(x,t)=0 => x stays constant
 
     batch, dims = 2, 5
@@ -84,7 +83,6 @@ def test_ot_sampler_history_and_timesteps_and_no_grad_and_labels():
 @pytest.mark.parametrize("device", ["cpu"])  # keep CPU only in CI
 @pytest.mark.parametrize("history", [False, True])
 def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
-    torch.manual_seed(0)
     model = DummyModel(device=device, drift_scale=0.0, diff_coeff=1.0, std=2.0)
 
     batch, dims = 4, 3

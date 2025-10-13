@@ -21,7 +21,6 @@ from src.networks import (
 
 
 def test_gaussian_fourier_projection_shapes_and_values():
-    torch.manual_seed(0)
     embed_dim = 8
     proj = GaussianFourierProjection(embed_dim)
 
@@ -53,7 +52,6 @@ def test_gaussian_fourier_projection_W_is_buffer_not_trainable():
 def test_gaussian_fourier_projection_odd_embed_dim_current_behavior():
     # Document current behavior: odd embed_dim yields output with size
     # 2 * floor(embed_dim/2), i.e., smaller than requested.
-    torch.manual_seed(0)
     embed_dim = 7
     proj = GaussianFourierProjection(embed_dim)
     x = torch.tensor([0.0, 1.0])
@@ -62,7 +60,6 @@ def test_gaussian_fourier_projection_odd_embed_dim_current_behavior():
 
 
 def test_embedding_output_and_grad():
-    torch.manual_seed(1)
     time_channels = 16
     emb = Embedding(embed_dim=time_channels)
     x = torch.randn(4, requires_grad=True)
@@ -74,7 +71,6 @@ def test_embedding_output_and_grad():
 
 
 def test_linear_net_time_conditioning_changes_output():
-    torch.manual_seed(2)
     net = LinearNet(in_channels=3, channels=[8, 5], time_channels=12)
     x = torch.randn(7, 3)
     t1 = torch.zeros(7)
@@ -90,7 +86,6 @@ def test_linear_net_time_conditioning_changes_output():
 
 
 def test_even_linear_is_even_function():
-    torch.manual_seed(3)
     net = EvenLinear(in_channels=4, channels=[6, 6], time_channels=10)
     x = torch.randn(5, 4)
     t = torch.randn(5)
@@ -102,7 +97,6 @@ def test_even_linear_is_even_function():
 
 
 def test_odd_linear_is_odd_function():
-    torch.manual_seed(4)
     net = OddLinear(in_channels=2, channels=[5, 5], time_channels=8)
     x = torch.randn(6, 2)
     t = torch.randn(6)
@@ -114,7 +108,6 @@ def test_odd_linear_is_odd_function():
 
 
 def test_conditional_linear_wrapper_changes_with_y():
-    torch.manual_seed(5)
     base = LinearNet(in_channels=2, channels=[4, 4], time_channels=6)
     cond = ConditionalLinearWrapper(base, label_dim=12)
 
@@ -158,7 +151,6 @@ def test_ws_conv_and_ws_convT_have_weight_norm():
 
 
 def test_unet_forward_shape():
-    torch.manual_seed(6)
     net = UNet(in_channels=2, channels=[8, 16], time_channels=12)
     x = torch.randn(2, 2, 8, 8)
     t = torch.randn(2)
@@ -167,7 +159,6 @@ def test_unet_forward_shape():
 
 
 def test_linear_attention_forward_shape_and_finite():
-    torch.manual_seed(7)
     attn = LinearAttention(channels=12, heads=3, dim_head=4)
     x = torch.randn(2, 12, 5, 5)
     y = attn(x)
@@ -176,7 +167,6 @@ def test_linear_attention_forward_shape_and_finite():
 
 
 def test_attention_block_residual_and_grad():
-    torch.manual_seed(8)
     block = AttentionBlock(channels=8, num_heads=4, reduction=2)
     x = torch.randn(2, 8, 6, 6, requires_grad=True)
     y = block(x)
@@ -186,7 +176,6 @@ def test_attention_block_residual_and_grad():
 
 
 def test_unet_with_attention_forward_shape():
-    torch.manual_seed(9)
     net = UNetWAttention(in_channels=2, channels=[8, 16], time_channels=10)
     x = torch.randn(1, 2, 8, 8)
     t = torch.randn(1)

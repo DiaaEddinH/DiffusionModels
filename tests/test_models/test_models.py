@@ -8,11 +8,6 @@ from torch.optim.lr_scheduler import StepLR
 from src.models import EMA, ScoreModel, EnergyBasedModel, FlowMatchingModel
 
 
-def set_seed(seed: int = 0):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-
 class TinyNet(nn.Module):
     """A tiny network that is easy to reason about in tests.
 
@@ -38,7 +33,6 @@ def make_batch(n=4, d=3, device=None):
 
 
 def test_ema_update_and_restore():
-    set_seed(123)
     model = TinyNet(dim=3)
     ema = EMA(model, decay=0.5)
 
@@ -84,7 +78,6 @@ def test_ema_update_and_restore():
     "schedule", ["geometric", "linear"]
 )  # exercise both schedules via ScoreModel
 def test_scoremodel_forward_and_loss_and_trainstep(schedule):
-    set_seed(0)
     d = 4
     net = TinyNet(dim=d)
     model = ScoreModel(network=net, schedule=schedule, device="cpu")
@@ -117,7 +110,6 @@ def test_scoremodel_forward_and_loss_and_trainstep(schedule):
 
 
 def test_scoremodel_save_and_load(tmp_path):
-    set_seed(42)
     d = 3
     net = TinyNet(dim=d)
     model = ScoreModel(network=net, device="cpu")
@@ -167,7 +159,6 @@ def test_scoremodel_load_missing_optional_keys(tmp_path):
 
 
 def test_energy_based_model_forward_and_loss():
-    set_seed(7)
     d = 5
     net = TinyNet(dim=d)
     ebm = EnergyBasedModel(network=net, device="cpu")
@@ -188,7 +179,6 @@ def test_energy_based_model_forward_and_loss():
 
 def test_energy_based_model_forward_create_graph_flag():
     # explicitly exercise create_graph=True branch
-    set_seed(11)
     d = 2
     ebm = EnergyBasedModel(network=TinyNet(dim=d), device="cpu")
     x = make_batch(n=2, d=d)
@@ -201,7 +191,6 @@ def test_energy_based_model_forward_create_graph_flag():
 
 
 def test_flow_matching_model_end_to_end(tmp_path):
-    set_seed(9)
     d = 3
     net = TinyNet(dim=d)
     fmm = FlowMatchingModel(network=net, device="cpu")
