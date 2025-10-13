@@ -8,14 +8,14 @@ from pathlib import Path
 #     cfg = yaml.safe_load(f)
 
 # Example: snakemake -j 8 --config experiment=configs/GMODEL_EBM_config.yaml
-if "experiment" not in config:
-    raise ValueError("Please provide --config experiment=<path_to_yaml>")
+# if "experiment" not in config:
+#     raise ValueError("Please provide --config experiment=<path_to_yaml>")
 
-config_path = config["experiment"]
-with open(config_path) as f:
-    cfg = yaml.safe_load(f)
+# config_path = config["experiment"]
+# with open(config_path) as f:
+#     cfg = yaml.safe_load(f)
 
-EXPERIMENT_BASE = cfg["file"]  # e.g., "GMODEL_EBM"
+EXPERIMENT_BASE = "GMODEL_EBM" # cfg["file"]  # e.g., "GMODEL_EBM"
 
 # Detect all sample stems
 SAMPLES = [
@@ -45,7 +45,7 @@ rule compute_moments:
         "scripts/compute_moments.py"
 
 
-rule compute_moments:
+rule compute_other_moments:
     input:
         lambda wildcards: f"data/samples/{wildcards.sample}_samples.npy"
     output:

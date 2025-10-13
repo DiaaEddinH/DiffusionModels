@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 import torch
 
-from diffusion_models.utils.utils import (
+from diffusion_models.utils import (
     set_device,
     ddp_setup,
     destroy_ddp,
@@ -26,9 +26,10 @@ class DummyModel(torch.nn.Module):
 
 def test_set_device_cpu_default(monkeypatch):
     monkeypatch.setenv("LOCAL_RANK", "0")
-    with mock.patch.object(
-        torch.cuda, "is_available", return_value=False
-    ), mock.patch.object(torch.backends.mps, "is_available", return_value=False):
+    with (
+        mock.patch.object(torch.cuda, "is_available", return_value=False),
+        mock.patch.object(torch.backends.mps, "is_available", return_value=False),
+    ):
         dev = set_device("cpu")
         assert isinstance(dev, torch.device)
         assert dev.type == "cpu"
@@ -36,13 +37,11 @@ def test_set_device_cpu_default(monkeypatch):
 
 def test_set_device_gpu_path(monkeypatch):
     monkeypatch.setenv("LOCAL_RANK", "1")
-    with mock.patch.object(
-        torch.cuda, "is_available", return_value=True
-    ), mock.patch.object(
-        torch.backends.mps, "is_available", return_value=False
-    ), mock.patch.object(
-        torch.cuda, "set_device"
-    ) as m_set_dev:
+    with (
+        mock.patch.object(torch.cuda, "is_available", return_value=True),
+        mock.patch.object(torch.backends.mps, "is_available", return_value=False),
+        mock.patch.object(torch.cuda, "set_device") as m_set_dev,
+    ):
         dev = set_device("gpu")
         m_set_dev.assert_called_once_with(1)
         assert dev.type == "cuda"
@@ -51,9 +50,10 @@ def test_set_device_gpu_path(monkeypatch):
 
 def test_set_device_mps_path(monkeypatch):
     monkeypatch.delenv("LOCAL_RANK", raising=False)
-    with mock.patch.object(
-        torch.cuda, "is_available", return_value=False
-    ), mock.patch.object(torch.backends.mps, "is_available", return_value=True):
+    with (
+        mock.patch.object(torch.cuda, "is_available", return_value=False),
+        mock.patch.object(torch.backends.mps, "is_available", return_value=True),
+    ):
         dev = set_device("gpu")
         # Even if the current platform doesn't support MPS, torch.device("mps") can be constructed
         assert isinstance(dev, torch.device)
@@ -67,9 +67,10 @@ def test_set_device_invalid(inp):
 
 
 def test_ddp_setup_calls_init_with_gloo_when_single_cuda():
-    with mock.patch.object(torch.cuda, "device_count", return_value=1), mock.patch(
-        "torch.distributed.init_process_group"
-    ) as m_init:
+    with (
+        mock.patch.object(torch.cuda, "device_count", return_value=1),
+        mock.patch("torch.distributed.init_process_group") as m_init,
+    ):
         ddp_setup(use_ddp=True)
         m_init.assert_called_once()
         # first positional arg is backend=... or keyword; check kwargs
@@ -82,9 +83,10 @@ def test_ddp_setup_calls_init_with_gloo_when_single_cuda():
 
 
 def test_ddp_setup_uses_nccl_when_multi_cuda():
-    with mock.patch.object(torch.cuda, "device_count", return_value=2), mock.patch(
-        "torch.distributed.init_process_group"
-    ) as m_init:
+    with (
+        mock.patch.object(torch.cuda, "device_count", return_value=2),
+        mock.patch("torch.distributed.init_process_group") as m_init,
+    ):
         ddp_setup(use_ddp=True)
         kwargs = m_init.call_args.kwargs
         if kwargs:
@@ -100,27 +102,33 @@ def test_ddp_setup_noop_when_disabled():
 
 
 def test_destroy_ddp_when_initialized():
-    with mock.patch("torch.distributed.is_initialized", return_value=True), mock.patch(
-        "torch.distributed.barrier"
-    ) as m_barrier, mock.patch("torch.distributed.destroy_process_group") as m_destroy:
+    with (
+        mock.patch("torch.distributed.is_initialized", return_value=True),
+        mock.patch("torch.distributed.barrier") as m_barrier,
+        mock.patch("torch.distributed.destroy_process_group") as m_destroy,
+    ):
         destroy_ddp(use_ddp=True)
         m_barrier.assert_called_once()
         m_destroy.assert_called_once()
 
 
 def test_destroy_ddp_not_initialized():
-    with mock.patch("torch.distributed.is_initialized", return_value=False), mock.patch(
-        "torch.distributed.barrier"
-    ) as m_barrier, mock.patch("torch.distributed.destroy_process_group") as m_destroy:
+    with (
+        mock.patch("torch.distributed.is_initialized", return_value=False),
+        mock.patch("torch.distributed.barrier") as m_barrier,
+        mock.patch("torch.distributed.destroy_process_group") as m_destroy,
+    ):
         destroy_ddp(use_ddp=True)
         m_barrier.assert_not_called()
         m_destroy.assert_not_called()
 
 
 def test_destroy_ddp_disabled():
-    with mock.patch("torch.distributed.is_initialized", return_value=True), mock.patch(
-        "torch.distributed.barrier"
-    ) as m_barrier, mock.patch("torch.distributed.destroy_process_group") as m_destroy:
+    with (
+        mock.patch("torch.distributed.is_initialized", return_value=True),
+        mock.patch("torch.distributed.barrier") as m_barrier,
+        mock.patch("torch.distributed.destroy_process_group") as m_destroy,
+    ):
         destroy_ddp(use_ddp=False)
         m_barrier.assert_not_called()
         m_destroy.assert_not_called()
@@ -168,9 +176,10 @@ def test_set_default_plot_parameters_updates_rcparams():
 def test_set_device_gpu_requested_no_gpu_prints_and_uses_cpu(monkeypatch, capsys):
     # No CUDA, no MPS → should print the fallback message and return CPU device
     monkeypatch.delenv("LOCAL_RANK", raising=False)
-    with mock.patch.object(
-        torch.cuda, "is_available", return_value=False
-    ), mock.patch.object(torch.backends.mps, "is_available", return_value=False):
+    with (
+        mock.patch.object(torch.cuda, "is_available", return_value=False),
+        mock.patch.object(torch.backends.mps, "is_available", return_value=False),
+    ):
         dev = set_device("gpu")
         captured = capsys.readouterr()
         assert (

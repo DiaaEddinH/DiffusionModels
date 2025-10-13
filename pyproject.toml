@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "diffusion-models"
+version = "0.1.0"
+description = "Score-based diffusion models: statistics & utilities"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Diaa Eddin", email = "none@example.com" }]  # update email
+license = { text = "MIT" }
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "torch>=2.0",         # pip name; conda recipe will use pytorch
+  "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "build",
+  "twine",
+  "pre-commit",
+]
+
+[project.urls]
+Homepage = "https://github.com/DiaaEddinH/DiffusionModels"
+Repository = "https://github.com/DiaaEddinH/DiffusionModels"
+Issues = "https://github.com/DiaaEddinH/DiffusionModels/issues"
+
+[project.scripts]
+diffusion-moments = "diffusion_models.cli:moments"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diffusion_models"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

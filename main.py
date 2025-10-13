@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from diffusion_models.utils.utils import set_device, ddp_setup, destroy_ddp, grab
+from diffusion_models.utils import set_device, ddp_setup, destroy_ddp, grab
 from torch.utils.data import DataLoader, DistributedSampler
 from diffusion_models.datasets.datasets import DoublePeak
 from diffusion_models.config.config_loader import parse_configs
