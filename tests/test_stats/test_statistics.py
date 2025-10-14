@@ -1,9 +1,11 @@
 import unittest
-import numpy as np
-import torch
-import pytest
 from math import comb
 
+import numpy as np
+import pytest
+import torch
+
+from diffusion_models.stats import statistics as stats
 from diffusion_models.stats.statistics import (
     bootstrap_estimator,
     moment,
@@ -12,7 +14,6 @@ from diffusion_models.stats.statistics import (
     other_moments,
     calc_other_moments,
 )
-from diffusion_models.stats import statistics as ms
 
 BOOT_N = 80
 
@@ -22,14 +23,14 @@ class DummyEnergyModel:
         self.device = torch.device(device)
 
     def energy(self, x, t):
-        dx1 = x[:, 0] - ms.MEAN1_X
-        dy1 = x[:, 1] - ms.MEAN1_Y
-        dx2 = x[:, 0] - ms.MEAN2_X
-        dy2 = x[:, 1] - ms.MEAN2_Y
-        quad1 = (dx1 * dx1 + dy1 * dy1) / ms.VAR
-        quad2 = (dx2 * dx2 + dy2 * dy2) / ms.VAR
-        l1 = ms.LOG_NORM_2D - 0.5 * quad1
-        l2 = ms.LOG_NORM_2D - 0.5 * quad2
+        dx1 = x[:, 0] - stats.MEAN1_X
+        dy1 = x[:, 1] - stats.MEAN1_Y
+        dx2 = x[:, 0] - stats.MEAN2_X
+        dy2 = x[:, 1] - stats.MEAN2_Y
+        quad1 = (dx1 * dx1 + dy1 * dy1) / stats.VAR
+        quad2 = (dx2 * dx2 + dy2 * dy2) / stats.VAR
+        l1 = stats.LOG_NORM_2D - 0.5 * quad1
+        l2 = stats.LOG_NORM_2D - 0.5 * quad2
         m = torch.maximum(l1, l2)
         return torch.log(0.5 * torch.exp(l1 - m) + 0.5 * torch.exp(l2 - m)) + m
 
@@ -208,64 +209,71 @@ class TestStatistics(unittest.TestCase):
         assert np.isfinite(mean_v).all() and np.isfinite(err_v).all()
 
     def _ref_logpdf_mixture_np(self, x0, x1):
-        dx1 = x0 - ms.MEAN1_X
-        dy1 = x1 - ms.MEAN1_Y
-        dx2 = x0 - ms.MEAN2_X
-        dy2 = x1 - ms.MEAN2_Y
-        quad1 = (dx1 * dx1 + dy1 * dy1) / ms.VAR
-        quad2 = (dx2 * dx2 + dy2 * dy2) / ms.VAR
-        l1 = ms.LOG_NORM_2D - 0.5 * quad1
-        l2 = ms.LOG_NORM_2D - 0.5 * quad2
+        dx1 = x0 - stats.MEAN1_X
+        dy1 = x1 - stats.MEAN1_Y
+        dx2 = x0 - stats.MEAN2_X
+        dy2 = x1 - stats.MEAN2_Y
+        quad1 = (dx1 * dx1 + dy1 * dy1) / stats.VAR
+        quad2 = (dx2 * dx2 + dy2 * dy2) / stats.VAR
+        l1 = stats.LOG_NORM_2D - 0.5 * quad1
+        l2 = stats.LOG_NORM_2D - 0.5 * quad2
         m = np.maximum(l1, l2)
         return np.log(0.5 * np.exp(l1 - m) + 0.5 * np.exp(l2 - m)) + m
 
     def test_logpdf_component_at_mean(self):
-        lp = ms.logpdf_component_batch(
-            np.array([ms.MEAN1_X]), np.array([ms.MEAN1_Y]), ms.MEAN1_X, ms.MEAN1_Y
+        lp = stats.logpdf_component_batch(
+            np.array([stats.MEAN1_X]),
+            np.array([stats.MEAN1_Y]),
+            stats.MEAN1_X,
+            stats.MEAN1_Y,
         )
-        self.assertTrue(np.allclose(lp, ms.LOG_NORM_2D))
+        self.assertTrue(np.allclose(lp, stats.LOG_NORM_2D))
 
     def test_logpdf_mixture_symmetry(self):
-        a = ms.logpdf_mixture_batch(np.array([ms.MEAN1_X]), np.array([ms.MEAN1_Y]))
-        b = ms.logpdf_mixture_batch(np.array([ms.MEAN2_X]), np.array([ms.MEAN2_Y]))
+        a = stats.logpdf_mixture_batch(
+            np.array([stats.MEAN1_X]), np.array([stats.MEAN1_Y])
+        )
+        b = stats.logpdf_mixture_batch(
+            np.array([stats.MEAN2_X]), np.array([stats.MEAN2_Y])
+        )
         self.assertTrue(np.allclose(a, b))
 
     def test_logpdf_mixture_batch_numeric(self):
-        xs = np.array([ms.MEAN1_X, ms.MEAN2_X, 0.0, 5.0, -5.0])
-        ys = np.array([ms.MEAN1_Y, ms.MEAN2_Y, 0.0, -5.0, 5.0])
-        lp_ms = ms.logpdf_mixture_batch(xs, ys)
+        xs = np.array([stats.MEAN1_X, stats.MEAN2_X, 0.0, 5.0, -5.0])
+        ys = np.array([stats.MEAN1_Y, stats.MEAN2_Y, 0.0, -5.0, 5.0])
+        lp_ms = stats.logpdf_mixture_batch(xs, ys)
         lp_ref = self._ref_logpdf_mixture_np(xs, ys)
         self.assertTrue(np.all(np.isfinite(lp_ms)))
         self.assertTrue(np.allclose(lp_ms, lp_ref, rtol=1e-8, atol=1e-10))
 
     def test_logpdf_batch_calls_model_and_matches_reference(self):
         model = DummyEnergyModel("cpu")
-        xs = np.array([ms.MEAN1_X, ms.MEAN2_X, 0.0, 3.0], dtype=np.float32)
-        ys = np.array([ms.MEAN1_Y, ms.MEAN2_Y, 0.0, -3.0], dtype=np.float32)
-        out = ms.logpdf_batch(torch.from_numpy(xs), torch.from_numpy(ys), model)
+        xs = np.array([stats.MEAN1_X, stats.MEAN2_X, 0.0, 3.0], dtype=np.float32)
+        ys = np.array([stats.MEAN1_Y, stats.MEAN2_Y, 0.0, -3.0], dtype=np.float32)
+        out = stats.logpdf_batch(torch.from_numpy(xs), torch.from_numpy(ys), model)
         self.assertTrue(torch.is_tensor(out))
         self.assertEqual(out.shape, (len(xs),))
         lp_ref = self._ref_logpdf_mixture_np(xs, ys)
         self.assertTrue(np.allclose(out.numpy(), lp_ref, rtol=1e-6, atol=1e-6))
 
     def test_double_factorial_odd(self):
-        self.assertEqual(ms.double_factorial_odd(1), 1.0)
-        self.assertEqual(ms.double_factorial_odd(3), 3.0)
-        self.assertEqual(ms.double_factorial_odd(5), 15.0)
-        self.assertEqual(ms.double_factorial_odd(0), 1.0)
+        self.assertEqual(stats.double_factorial_odd(1), 1.0)
+        self.assertEqual(stats.double_factorial_odd(3), 3.0)
+        self.assertEqual(stats.double_factorial_odd(5), 15.0)
+        self.assertEqual(stats.double_factorial_odd(0), 1.0)
 
     def test_gaussian_even_moment(self):
         s = 2.0
-        self.assertEqual(ms.gaussian_even_moment(0, s), 1.0)
-        self.assertEqual(ms.gaussian_even_moment(1, s), 0.0)
-        self.assertEqual(ms.gaussian_even_moment(2, s), s**2)
-        self.assertEqual(ms.gaussian_even_moment(4, s), 3.0 * s**4)
+        self.assertEqual(stats.gaussian_even_moment(0, s), 1.0)
+        self.assertEqual(stats.gaussian_even_moment(1, s), 0.0)
+        self.assertEqual(stats.gaussian_even_moment(2, s), s**2)
+        self.assertEqual(stats.gaussian_even_moment(4, s), 3.0 * s**4)
 
     def test_raw_and_central_moments(self):
         v = np.array([1.0, 2.0, 3.0, 4.0])
-        raw = ms.raw_moments(v, 3)
+        raw = stats.raw_moments(v, 3)
         self.assertTrue(np.allclose(raw[1:], [2.5, 7.5, 25.0]))
-        mu, cent = ms.central_moments(v, 3)
+        mu, cent = stats.central_moments(v, 3)
         self.assertAlmostEqual(mu, 2.5)
         self.assertTrue(abs(cent[1]) < 1e-12)
         self.assertAlmostEqual(cent[2], 1.25)
@@ -281,7 +289,7 @@ class TestStatistics(unittest.TestCase):
         C[6] = 11.0
         C[7] = 13.0
         C[8] = 17.0
-        K = ms.cumulants_from_central(mu, C, 8)
+        K = stats.cumulants_from_central(mu, C, 8)
         self.assertAlmostEqual(K[1], mu)
         self.assertAlmostEqual(K[2], C[2])
         self.assertAlmostEqual(K[3], C[3])
@@ -299,6 +307,19 @@ class TestStatistics(unittest.TestCase):
             + 420 * C[4] * C[2] ** 2
             - 630 * C[2] ** 4,
         )
+
+    def test_central_moment_setting_an_element_with_a_sequence_valueerror(self):
+        data_2d = np.random.normal(loc=0.0, scale=1.0, size=(200, 2))
+        stats.calc_cumulants(data_2d, max_order=5, n_bins=20)
+
+    def test_calc_cumulants_complex_data_triggers_valueerror_inhomogeneous_array(self):
+        rng = np.random.default_rng(0)
+        real = rng.normal(loc=0.0, scale=1.0, size=512).astype(np.float32)
+        imag = rng.normal(loc=0.0, scale=1e-3, size=512).astype(np.float32)
+        data = real + 1j * imag
+
+        # This should reproduce the heterogeneous `vals` and trigger the ValueError
+        calc_cumulants(data, max_order=8, n_bins=64)
 
     def _gauss_even_moment(self, order, sigma):
         if order % 2 == 1:
@@ -320,8 +341,8 @@ class TestStatistics(unittest.TestCase):
         return acc
 
     def test_analytic_raw_marginal_closed_forms(self):
-        m, s = ms.m_value, ms.SIGMA
-        R = ms.analytic_raw_marginal(8, m, s)
+        m, s = stats.m_value, stats.SIGMA
+        R = stats.analytic_raw_marginal(8, m, s)
         self.assertTrue(np.allclose(R[1::2], 0.0))
         self.assertAlmostEqual(R[2], m**2 + s**2)
         self.assertAlmostEqual(R[4], m**4 + 6 * m * m * s * s + 3 * s**4)
@@ -331,8 +352,8 @@ class TestStatistics(unittest.TestCase):
         self.assertAlmostEqual(R[8], self._expected_raw_even(8, m, s))
 
     def test_analytic_cumulants_closed_forms(self):
-        m, s = ms.m_value, ms.SIGMA
-        K = ms.analytic_cumulants(8, m, s)
+        m, s = stats.m_value, stats.SIGMA
+        K = stats.analytic_cumulants(8, m, s)
         self.assertTrue(np.allclose(K[1::2], 0.0))
         self.assertAlmostEqual(K[2], s**2 + m**2)
         self.assertAlmostEqual(K[4], -2.0 * m**4)
@@ -342,7 +363,7 @@ class TestStatistics(unittest.TestCase):
     def test_bootstrap_reproducible_and_shapes(self):
         # Use global test seed for determinism; just validate API and outputs
         data = np.random.randn(100, 2)
-        means, errs = ms.bootstrap(data, n_boot=BOOT_N)
+        means, errs = stats.bootstrap(data, n_boot=BOOT_N)
         self.assertEqual(means.shape, (2,))
         self.assertEqual(errs.shape, (2,))
         self.assertTrue(np.isfinite(means).all())
@@ -359,8 +380,8 @@ class TestStatistics(unittest.TestCase):
             adapt=True,
             adapt_window=20,
         )
-        s1, a1 = ms.mh_parallel(**cfg)
-        s2, a2 = ms.mh_parallel(**cfg)
+        s1, a1 = stats.mh_parallel(**cfg)
+        s2, a2 = stats.mh_parallel(**cfg)
         self.assertEqual(s1.shape, (cfg["n_chains"] * cfg["n_keep"], 2))
         self.assertTrue(np.isfinite(s1).all())
         self.assertTrue(0.0 <= a1 <= 1.0)
@@ -368,7 +389,7 @@ class TestStatistics(unittest.TestCase):
         self.assertAlmostEqual(a1, a2)
         # different seed ⇒ not equal
         cfg2 = dict(cfg, seed=cfg["seed"] + 1)
-        s3, a3 = ms.mh_parallel(**cfg2)
+        s3, a3 = stats.mh_parallel(**cfg2)
         self.assertFalse(np.allclose(s1, s3))
 
     def test_torch_mh_parallel_api_invariants_and_seed(self):
@@ -384,14 +405,14 @@ class TestStatistics(unittest.TestCase):
             adapt_window=20,
             model=model,
         )
-        s1, a1 = ms.torch_mh_parallel(**cfg)
-        s2, a2 = ms.torch_mh_parallel(**cfg)
+        s1, a1 = stats.torch_mh_parallel(**cfg)
+        s2, a2 = stats.torch_mh_parallel(**cfg)
         self.assertEqual(s1.shape, (cfg["n_chains"] * cfg["n_keep"], 2))
         self.assertTrue(torch.isfinite(s1).all())
         self.assertTrue(0.0 <= a1 <= 1.0)
         self.assertTrue(torch.allclose(s1, s2))
         self.assertAlmostEqual(a1, a2)
-        s3, a3 = ms.torch_mh_parallel(**dict(cfg, seed=cfg["seed"] + 1))
+        s3, a3 = stats.torch_mh_parallel(**dict(cfg, seed=cfg["seed"] + 1))
         self.assertFalse(torch.allclose(s1, s3))
 
     def test_odd_moment_zero_for_symmetric_about_center(self):
@@ -401,7 +422,7 @@ class TestStatistics(unittest.TestCase):
         ).T  # shape (5,2)
         # third central moment around 0 should be ~0 per column
         expected = np.mean((x - 0.0) ** 3, axis=0)
-        out = ms.moment(x, order=3, axis=0)
+        out = stats.moment(x, order=3, axis=0)
         np.testing.assert_allclose(out, expected)
         np.testing.assert_allclose(out, np.zeros_like(out), atol=1e-15)
 
@@ -410,7 +431,7 @@ class TestStatistics(unittest.TestCase):
         bad_center = np.array([1.0, 2.0])  # not broadcastable to (4,3) along axis=0
         with self.assertRaises(ValueError):
             # Numpy will raise during broadcasting inside (x - center)
-            ms.moment(x, order=2, axis=0, center=bad_center)
+            stats.moment(x, order=2, axis=0, center=bad_center)
 
 
 if __name__ == "__main__":
