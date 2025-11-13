@@ -5,8 +5,16 @@ import numpy as np
 import torch.distributed as dist
 from torch.nn.modules import activation
 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
+
 
 def set_device(device: str = "cpu") -> torch.device:
+    """
+    Set the device to GPU if available, otherwise CPU.
+    :param device: "cpu" or "gpu"
+    :return: torch.device object
+    """
     device = device.lower()
     assert device in ["gpu", "cpu"], f"{device} is not a supported device"
 
@@ -22,6 +30,10 @@ def set_device(device: str = "cpu") -> torch.device:
 
 
 def ddp_setup(use_ddp: bool = True):
+    """
+    Initialize the distributed data parallel (DDP) environment.
+    :param use_ddp: Whether to use DDP or not.
+    """
     backend = "gloo"
     if torch.cuda.device_count() > 1:
         backend = "nccl"
@@ -30,20 +42,33 @@ def ddp_setup(use_ddp: bool = True):
 
 
 def destroy_ddp(use_ddp: bool = True):
+    """
+    Destroy the distributed data parallel (DDP) environment.
+    :param use_ddp: Whether to use DDP or not.
+    """
     if use_ddp and dist.is_initialized():
         dist.barrier()
         dist.destroy_process_group()
 
 
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a model.
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def grab(x: torch.Tensor) -> np.ndarray:
+def detach_to_numpy(x: torch.Tensor) -> np.ndarray:
+    """
+    Move a tensor to CPU and convert to numpy array.
+    """
     return x.detach().cpu().numpy()
 
 
 def get_activation_func(act: str):
+    """
+    Get activation function from string.
+    """
     # get list from activatoin submodule as lower-case
     activations_list = [str(a).lower() for a in activation.__all__]
     if (act := str(act).lower()) in activations_list:
@@ -56,11 +81,10 @@ def get_activation_func(act: str):
         raise ValueError(f"Cannot find activation function for string <{act}>")
 
 
-import matplotlib.pyplot as plt
-from matplotlib.ticker import AutoMinorLocator
-
-
 def set_default_plot_parameters():
+    """
+    Set default plot parameters for matplotlib to ensure consistency and readability in plots.
+    """
     plt.rcParams.update(
         {
             "text.usetex": True,

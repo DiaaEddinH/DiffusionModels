@@ -16,12 +16,24 @@ datasets_dir.mkdir(parents=True, exist_ok=True)
 
 @dataclass
 class BaseDataset(Dataset, ABC):
+    """
+    Base class for datasets.
+    """
 
     data: NDArray = field(init=False)
+    """
+    The data of the dataset.
+    """
 
     _normalized: bool = field(default=False, init=False)
+    """
+    Whether the data is normalized.
+    """
 
     _raw_data: NDArray = field(default=None, init=False)
+    """
+    The raw (unnormalized) data of the dataset.
+    """
 
     def __post_init__(self):
         next_post = getattr(super(), "__post_init__", None)

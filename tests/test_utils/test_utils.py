@@ -10,7 +10,7 @@ from diffusion_models.utils import (
     ddp_setup,
     destroy_ddp,
     count_trainable_parameters,
-    grab,
+    detach_to_numpy,
     get_activation_func,
     set_default_plot_parameters,
 )
@@ -142,7 +142,7 @@ def test_count_trainable_parameters():
 
 def test_grab_tensor_to_numpy():
     x = torch.randn(3, 4, requires_grad=True)
-    arr = grab(x)
+    arr = detach_to_numpy(x)
     assert isinstance(arr, np.ndarray)
     np.testing.assert_allclose(arr, x.detach().cpu().numpy())
 

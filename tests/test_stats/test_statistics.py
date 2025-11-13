@@ -5,15 +5,18 @@ import numpy as np
 import pytest
 import torch
 
+import diffusion_models.stats.bootstrap
+import diffusion_models.stats.cumulants
+import diffusion_models.stats.moments
 from diffusion_models.stats import statistics as stats
-from diffusion_models.stats.statistics import (
-    bootstrap_estimator,
+from diffusion_models.stats.moments import (
     moment,
     calc_moments,
-    calc_cumulants,
     other_moments,
     calc_other_moments,
 )
+from diffusion_models.stats.cumulants import calc_cumulants
+from diffusion_models.stats.bootstrap import bootstrap_estimator
 
 BOOT_N = 80
 
@@ -310,7 +313,7 @@ class TestStatistics(unittest.TestCase):
 
     def test_central_moment_setting_an_element_with_a_sequence_valueerror(self):
         data_2d = np.random.normal(loc=0.0, scale=1.0, size=(200, 2))
-        stats.calc_cumulants(data_2d, max_order=5, n_bins=20)
+        diffusion_models.stats.cumulants.calc_cumulants(data_2d, max_order=5, n_bins=20)
 
     def test_calc_cumulants_complex_data_triggers_valueerror_inhomogeneous_array(self):
         rng = np.random.default_rng(0)
@@ -363,7 +366,7 @@ class TestStatistics(unittest.TestCase):
     def test_bootstrap_reproducible_and_shapes(self):
         # Use global test seed for determinism; just validate API and outputs
         data = np.random.randn(100, 2)
-        means, errs = stats.bootstrap(data, n_boot=BOOT_N)
+        means, errs = diffusion_models.stats.bootstrap.bootstrap(data, n_boot=BOOT_N)
         self.assertEqual(means.shape, (2,))
         self.assertEqual(errs.shape, (2,))
         self.assertTrue(np.isfinite(means).all())
@@ -422,7 +425,7 @@ class TestStatistics(unittest.TestCase):
         ).T  # shape (5,2)
         # third central moment around 0 should be ~0 per column
         expected = np.mean((x - 0.0) ** 3, axis=0)
-        out = stats.moment(x, order=3, axis=0)
+        out = diffusion_models.stats.moments.moment(x, order=3, axis=0)
         np.testing.assert_allclose(out, expected)
         np.testing.assert_allclose(out, np.zeros_like(out), atol=1e-15)
 
@@ -431,7 +434,7 @@ class TestStatistics(unittest.TestCase):
         bad_center = np.array([1.0, 2.0])  # not broadcastable to (4,3) along axis=0
         with self.assertRaises(ValueError):
             # Numpy will raise during broadcasting inside (x - center)
-            stats.moment(x, order=2, axis=0, center=bad_center)
+            diffusion_models.stats.moments.moment(x, order=2, axis=0, center=bad_center)
 
 
 if __name__ == "__main__":
