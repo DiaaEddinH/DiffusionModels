@@ -11,14 +11,41 @@ from tqdm import trange
 class Trainer:
     """
     Trainer for score-based diffusion models with optional DDP support.
+    """
 
-    Args:
-            model (torch.nn.Module): Model to train. Must implement `train_step`.
-            optimizer (torch.optim.Optimizer): Optimizer.
-            file_path (str): Base path for saving weights and checkpoints.
-            device (torch.device): Training device.
-            use_ddp (bool): Use DistributedDataParallel.
-            checkpoint_dir (str): Directory for checkpoints.
+    model: torch.nn.Module
+    """
+    Model to train. Must implement `train_step`.
+    """
+
+    optimizer: torch.optim.Optimizer
+    """
+    Optimizer used for training.
+    """
+
+    file_path: str
+    """
+    Base path for saving weights and checkpoints.
+    """
+
+    device: torch.device
+    """
+    Device to use for training (e.g., 'cpu', 'cuda').
+    """
+
+    use_ddp: bool
+    """
+    Whether to use DistributedDataParallel (DDP) for multi-GPU training.
+    """
+
+    checkpoint_dir: str
+    """
+    Directory to save checkpoints.
+    """
+
+    weight_dir: str
+    """
+    Directory to save model weights.
     """
 
     def __init__(
@@ -30,12 +57,13 @@ class Trainer:
         use_ddp: bool = False,
         checkpoint_dir: str = "./data/checkpoints",
         weight_dir: str = "./data/weights",
-    ) -> None:
+    ):
+
         self.rank = int(os.environ.get("LOCAL_RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.file_path = file_path
         self.device = device
-        self.ckpt_freq = 10
+        self.checkpoint_frequency = 10
         self.use_ddp = False if str(device) == "mps" else use_ddp
 
         checkpoint_dir = Path(checkpoint_dir)
@@ -53,12 +81,12 @@ class Trainer:
 
         self._set_model(model, optimizer)
 
-    # ------------------------------
-    # Model setup and checkpointing
-    # ------------------------------
-    def _set_model(
-        self, model: torch.nn.Module, optimizer: torch.optim.Optimizer
-    ) -> None:
+    def _set_model(self, model: torch.nn.Module, optimizer: torch.optim.Optimizer):
+        """
+        Set the model and optimizer, load checkpoint if available, and wrap with DDP if needed.
+        :param model: Model to train.
+        :param optimizer: Optimizer for training.
+        """
         self.model = model.to(self.device)
         self.optimizer = optimizer
 
@@ -69,6 +97,9 @@ class Trainer:
             self.model = DDP(self.model, device_ids=[self.rank])
 
     def _load_checkpoint(self):
+        """
+        Load model and optimizer state from checkpoint.
+        """
         ckpt = torch.load(self.checkpoint, map_location=self.device, weights_only=True)
         model = self.model.module if self.use_ddp else self.model
         model.load_state_dict(ckpt["MODEL_STATE"])
@@ -83,6 +114,10 @@ class Trainer:
             print(f"Loaded checkpoint: continuing from epoch {self.epochs}")
 
     def _save_checkpoint(self, epoch):
+        """
+        Save model and optimizer state to checkpoint.
+        :param epoch: Current epoch number.
+        """
         model = self.model.module if self.use_ddp else self.model
         checkpoint = {
             "MODEL_STATE": model.state_dict(),
@@ -101,9 +136,6 @@ class Trainer:
             with open(self.history_file, "w") as f:
                 json.dump(self.history, f)
 
-    # ------------------------------
-    # Training Loop
-    # ------------------------------
     def train(
         self,
         loader: DataLoader,
@@ -112,6 +144,14 @@ class Trainer:
         early_stopping: int = 10,
         min_delta: float = 1e-4,
     ):
+        """
+        Train the model using the provided DataLoader.
+        :param loader: DataLoader for training data.
+        N_epochs: Number of epochs to train for.
+        scheduler: Optional scheduler for adjusting learning rate.
+        early_stopping: Number of epochs with no improvement to wait before stopping.
+        min_delta: Minimum change in loss to qualify as an improvement.
+        """
         model = self.model.module if self.use_ddp else self.model
         model.train()
         tqdm_epoch = trange(self.epochs, N_epochs, disable=(self.rank != 0))
@@ -164,7 +204,7 @@ class Trainer:
 
                 log_string = f"Average Loss: {current_loss:.6f}"
 
-                if epoch % self.ckpt_freq == 0:
+                if epoch % self.checkpoint_frequency == 0:
                     self._save_checkpoint(epoch)
 
                 # Early stopping check

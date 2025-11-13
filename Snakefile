@@ -45,7 +45,7 @@ rule compute_moments:
         "scripts/compute_moments.py"
 
 
-rule compute_moments:
+rule compute_other_moments:
     input:
         lambda wildcards: f"data/samples/{wildcards.sample}_samples.npy"
     output:

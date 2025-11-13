@@ -7,7 +7,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
-from src.trainer import Trainer
+from diffusion_models.trainer import Trainer
 
 
 class DummyEMA:
@@ -290,7 +290,7 @@ def test_set_model_wraps_with_ddp_on_init(tmp_path, monkeypatch):
             self.device_ids = device_ids
 
     # Patch DDP before constructing Trainer so _set_model uses our DummyDDP
-    monkeypatch.setattr("src.trainer.DDP", DummyDDP)
+    monkeypatch.setattr("diffusion_models.trainer.DDP", DummyDDP)
 
     class Tiny(torch.nn.Module):
         def __init__(self):
@@ -440,7 +440,7 @@ def test_train_early_stopping_breaks(tmp_path):
 def test_mps_device_disables_ddp(tmp_path, monkeypatch):
     """Constructor should force-disable DDP when device string is 'mps' without requiring MPS runtime."""
     # Avoid touching the real device in _set_model (which would call model.to(device))
-    from src.trainer import Trainer
+    from diffusion_models.trainer import Trainer
 
     def noop_set_model(self, model, optimizer):
         # minimal wiring so Trainer has attributes but never moves tensors/devices

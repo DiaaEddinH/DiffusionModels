@@ -1,27 +1,12 @@
-import math
-import types
 import torch
-import pytest
 
-from src.noise_scheduler import get_noise_schedule
-
-
-class Dummy:
-    pass
+from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSchedule
 
 
 def test_geometric_schedule_meaningful_properties_and_api():
-    obj = Dummy()
     sigma_min = 0.05
     sigma_max = 5.0
-    get_noise_schedule(
-        obj, schedule_type="geometric", sigma_min=sigma_min, sigma_max=sigma_max
-    )
-
-    # Basic API
-    assert isinstance(obj.stddev, types.FunctionType)
-    assert isinstance(obj.diffusion_coeff, types.FunctionType)
-    assert isinstance(obj.get_mean_stddev, types.FunctionType)
+    obj = GeometricSchedule(sigma_min=sigma_min, sigma_max=sigma_max)
 
     # Use float64 to make dtype propagation obvious
     t = torch.linspace(0.0, 1.0, steps=9, dtype=torch.float64)
@@ -54,18 +39,16 @@ def test_geometric_schedule_meaningful_properties_and_api():
 
     # get_mean_stddev: mean must be the original x object; std matches stddev(t)
     x = torch.randn(3, dtype=t.dtype)
-    mean, std_pair = obj.get_mean_stddev(x, t)
+    mean, std_pair = obj.mean_stddev(x, t)
     assert mean is x
     assert torch.allclose(std_pair, std)
 
 
 def test_linear_schedule_meaningful_properties_and_api():
-    obj = Dummy()
     sigma_min = 0.1
     sigma_max = 1.1
-    get_noise_schedule(
-        obj, schedule_type="linear", sigma_min=sigma_min, sigma_max=sigma_max
-    )
+
+    obj = LinearSchedule(sigma_min=sigma_min, sigma_max=sigma_max)
 
     # Use float32 here to also exercise different dtype
     t = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], dtype=torch.float32)
@@ -84,13 +67,6 @@ def test_linear_schedule_meaningful_properties_and_api():
 
     # get_mean_stddev: passthrough + pairing with stddev(t)
     x = torch.randn(4, 3, dtype=t.dtype)
-    mean, std_pair = obj.get_mean_stddev(x, t)
+    mean, std_pair = obj.mean_stddev(x, t)
     assert mean is x
     assert torch.allclose(std_pair, std, rtol=0.0, atol=0.0)
-
-
-def test_unknown_schedule_type_raises():
-    obj = Dummy()
-    with pytest.raises(ValueError) as excinfo:
-        get_noise_schedule(obj, schedule_type="unknown")
-    assert "Unknown schedule_type" in str(excinfo.value)

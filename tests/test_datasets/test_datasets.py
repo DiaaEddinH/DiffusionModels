@@ -1,58 +1,108 @@
-import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from src.datasets.datasets import (
+from diffusion_models.datasets.datasets import (
     BaseDataset,
     DoublePeak,
     DoublePeakMuConditioned,
     DoublePeakMuDiscrete,
+    HasLabelsMixin,
 )
 
 
+@dataclass
 class DummyDataset(BaseDataset):
-    def __init__(self, data, use_labels=False, labels=None):
-        super().__init__(use_labels=use_labels)
-        self.images = np.asarray(data)
-        self.labels = None if labels is None else np.asarray(labels)
+    def __post_init__(self):
+        self.data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        super().__post_init__()
 
 
-def test_base_dataset_get_len_and_normalise_axis_none():
-    data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
-    ds = DummyDataset(data)
+@dataclass
+class LabeledDummyDataset(BaseDataset, HasLabelsMixin):
+    def __post_init__(self):
+        self.data = np.array([[1.0, 2.0], [3.0, 6.0], [5.0, 10.0]], dtype=np.float32)
+        super().__post_init__()
 
-    # __len__ and __getitem__ without labels
-    assert len(ds) == 2
-    np.testing.assert_array_equal(ds[0], np.array([1.0, 2.0], dtype=np.float32))
-
-    # normalise over all values (axis=None)
-    norm = ds.normalise(ds.images)
-    assert hasattr(ds, "mean") and hasattr(ds, "stddev")
-    # Manually compute
-    mean = data.mean()
-    std = data.std()
-    np.testing.assert_allclose(ds.mean, mean)
-    np.testing.assert_allclose(ds.stddev, std)
-    np.testing.assert_allclose(norm, (data - mean) / std)
+    def init_labels(self):
+        self.labels = np.array([0.1, 0.2, 0.3], dtype=np.float32)
 
 
-def test_base_dataset_get_with_labels_and_normalise_axis_0():
-    data = np.array([[1.0, 2.0], [3.0, 6.0], [5.0, 10.0]], dtype=np.float32)
-    labels = np.array([0.1, 0.2, 0.3], dtype=np.float32)
-    ds = DummyDataset(data, use_labels=True, labels=labels)
+@dataclass
+class DummyMixin:
+    test_bool: bool = field(default=False)
+
+    def __post_init__(self):
+        self.test_bool = True
+        next_post = getattr(super(), "__post_init__", None)
+        if next_post is not None:
+            next_post()
+
+
+@dataclass
+class DummyDatasetWithMixins(BaseDataset, HasLabelsMixin, DummyMixin):
+    def __post_init__(self):
+        self.data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        super().__post_init__()
+
+    def init_labels(self):
+        self.labels = np.array([0.5, 0.6], dtype=np.float32)
+
+
+def test_mixin_passes_on_postinit():
+    dataset = DummyDatasetWithMixins()
+    assert dataset.test_bool
+    np.testing.assert_array_equal(
+        dataset.labels, np.array([0.5, 0.6], dtype=np.float32)
+    )
+
+
+def test_base_dataset_post_init():
+    dataset = DummyDataset()
+    np.testing.assert_array_equal(dataset.data, dataset._raw_data)
+
+
+def test_base_dataset_len():
+    dataset = DummyDataset()
+    assert len(dataset) == 2
+
+
+def test_base_dataset_getitem():
+    dataset = DummyDataset()
+    np.testing.assert_array_equal(dataset[0], np.array([1.0, 2.0], dtype=np.float32))
+
+
+def test_base_dataset_norm():
+    dataset = DummyDataset()
+    dataset.normalise()
+
+    col_mean = dataset.data.mean()
+    col_std = dataset.data.std()
+    np.testing.assert_allclose(
+        col_mean, np.array([0.0, 0.0], dtype=np.float32), atol=1e-6, rtol=0
+    )
+    np.testing.assert_allclose(
+        col_std, np.array([1.0, 1.0], dtype=np.float32), atol=1e-6, rtol=0
+    )
+
+
+def test_base_dataset_denorm():
+    dataset = DummyDataset()
+    dataset.normalise()
+    dataset.denormalise()
+    np.testing.assert_allclose(dataset.data, dataset._raw_data, rtol=1e-06)
+
+
+def test_labeled_base_dataset_getitem():
+
+    dataset = LabeledDummyDataset()
 
     # __getitem__ returns (image, label) when use_labels=True
-    x0, y0 = ds[0]
-    np.testing.assert_array_equal(x0, data[0])
-    assert y0 == labels[0]
-
-    # normalise per column (axis=0) stores vector mean/std
-    norm = ds.normalise(data, axis=0)
-    np.testing.assert_allclose(ds.mean, data.mean(axis=0))
-    np.testing.assert_allclose(ds.stddev, data.std(axis=0))
-    np.testing.assert_allclose(norm, (data - data.mean(axis=0)) / data.std(axis=0))
+    x0, y0 = dataset[0]
+    np.testing.assert_array_equal(x0, dataset.data[0])
+    assert y0 == dataset.labels[0]
 
 
 def test_double_peak_shape_dtype_and_stats():
@@ -61,14 +111,14 @@ def test_double_peak_shape_dtype_and_stats():
     sigma = 0.25
     ds = DoublePeak(mu=mu, sigma=sigma, size=size)
     assert len(ds) == size
-    assert ds.images.shape == (size, 2)
-    assert ds.images.dtype == np.float32
+    assert ds.data.shape == (size, 2)
+    assert ds.data.dtype == np.float32
 
     # Symmetry: x and y should have near-zero means overall due to mixing +/- mu
-    m = ds.images.mean(axis=0)
+    m = ds.data.mean(axis=0)
     assert np.all(np.abs(m) < 0.05)
     # Data finite
-    assert np.all(np.isfinite(ds.images))
+    assert np.all(np.isfinite(ds.data))
 
 
 def test_double_peak_vector_mu_broadcast_and_dtype():
@@ -79,11 +129,11 @@ def test_double_peak_vector_mu_broadcast_and_dtype():
     ds = DoublePeak(mu=mu_vec, sigma=sigma, size=size)
 
     assert len(ds) == size
-    assert ds.images.shape == (size, 2)
-    assert ds.images.dtype == np.float32
-    assert np.all(np.isfinite(ds.images))
+    assert ds.data.shape == (size, 2)
+    assert ds.data.dtype == np.float32
+    assert np.all(np.isfinite(ds.data))
     # Means should be near zero due to +mu and -mu mixing
-    m = ds.images.mean(axis=0)
+    m = ds.data.mean(axis=0)
     assert np.all(np.abs(m) < 0.1)
 
 
@@ -92,7 +142,7 @@ def test_double_peak_mu_conditioned_label_correlation(mu_min, mu_max, sigma, siz
     ds = DoublePeakMuConditioned(mu_min=mu_min, mu_max=mu_max, sigma=sigma, size=size)
 
     assert len(ds) == size
-    assert ds.images.shape == (size, 2)
+    assert ds.data.shape == (size, 2)
     assert ds.labels.shape == (size,)
 
     # Labels in range
@@ -100,7 +150,7 @@ def test_double_peak_mu_conditioned_label_correlation(mu_min, mu_max, sigma, siz
     assert float(ds.labels.max()) <= (mu_max + 1e-6)
 
     # Correlation: For points centered at (±mu, ∓mu), |x|+|y| ≈ 2*mu
-    approx_mu = 0.5 * (np.abs(ds.images[:, 0]) + np.abs(ds.images[:, 1]))
+    approx_mu = 0.5 * (np.abs(ds.data[:, 0]) + np.abs(ds.data[:, 1]))
     # With Gaussian test_noise sigma on both dims, allow a tolerance
     np.testing.assert_allclose(approx_mu.mean(), ds.labels.mean(), rtol=0.05, atol=0.05)
 
@@ -122,7 +172,7 @@ def test_double_peak_mu_discrete_properties_and_correlation():
     )
 
     assert len(ds) == size
-    assert ds.images.shape == (size, 2)
+    assert ds.data.shape == (size, 2)
     assert ds.labels.shape == (size,)
 
     # Labels lower-bounded by mu_min; upper side can exceed mu_max by up to ~delta due to how labels are generated
@@ -135,7 +185,7 @@ def test_double_peak_mu_discrete_properties_and_correlation():
     assert np.mean(dists <= (delta + 0.02)) > 0.95  # most within delta (+ small slack)
 
     # Correlation check like above
-    approx_mu = 0.5 * (np.abs(ds.images[:, 0]) + np.abs(ds.images[:, 1]))
+    approx_mu = 0.5 * (np.abs(ds.data[:, 0]) + np.abs(ds.data[:, 1]))
     np.testing.assert_allclose(approx_mu.mean(), ds.labels.mean(), rtol=0.08, atol=0.08)
 
 
@@ -163,16 +213,16 @@ def ensure_data_raw(tmp_path, monkeypatch):
     tmp_raw.mkdir(parents=True, exist_ok=True)
 
     # Monkeypatch the module-level datasets_dir Path to our temp path
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     monkeypatch.setattr(datasets_module, "datasets_dir", tmp_raw, raising=True)
 
     return tmp_raw
 
 
-def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
+def test_quartic_dataset(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     QuarticCL = datasets_module.QuarticCL
 
@@ -189,27 +239,13 @@ def test_quartic_cl_normalisation_and_stats(ensure_data_raw):
     )
     np.savetxt(file_path, data, delimiter=",", fmt="%.6f")
 
-    ds = QuarticCL()
-    assert ds.images.shape == data.shape
-
-    # Check per-column normalization
-    col_mean = ds.images.mean(axis=0)
-    col_std = ds.images.std(axis=0)
-    np.testing.assert_allclose(
-        col_mean, np.array([0.0, 0.0], dtype=np.float32), atol=1e-6, rtol=0
-    )
-    np.testing.assert_allclose(
-        col_std, np.array([1.0, 1.0], dtype=np.float32), atol=1e-6, rtol=0
-    )
-
-    # BaseDataset stored stats should be vectors of size 2
-    assert ds.mean.shape == (2,)
-    assert ds.stddev.shape == (2,)
+    dataset = QuarticCL()
+    assert dataset.data.shape == data.shape
 
 
 def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     Phi4Dataset = datasets_module.Phi4Dataset
 
@@ -221,22 +257,13 @@ def test_phi4dataset_shape_normalise_and_denorm(ensure_data_raw):
     original = np.random.randn(n, 32, 32).astype(np.float32) * 3.0 + 0.5
     np.save(file_path, original)
 
-    ds = Phi4Dataset()
-    assert ds.images.shape == (n, 1, 32, 32)
-
-    # Normalized to zero mean, unit std (over entire array)
-    im = ds.images.reshape(n, 32, 32)
-    np.testing.assert_allclose(im.mean(), 0.0, atol=2e-6, rtol=0)
-    np.testing.assert_allclose(im.std(), 1.0, atol=2e-6, rtol=0)
-
-    # Denormalization should recover the original data
-    recovered = ds.denorm(im)
-    np.testing.assert_allclose(recovered, original, atol=1e-5, rtol=0)
+    dataset = Phi4Dataset()
+    assert dataset._raw_data.shape == (n, 1, 32, 32)
 
 
 def test_phi4_len_and_getitem(ensure_data_raw):
     # Import from the already monkeypatched module so we don't touch real data
-    from src.datasets import datasets as datasets_module
+    from diffusion_models.datasets import datasets as datasets_module
 
     Phi4Dataset = datasets_module.Phi4Dataset
 
@@ -248,7 +275,6 @@ def test_phi4_len_and_getitem(ensure_data_raw):
     np.save(file_path, original)
 
     ds = Phi4Dataset()
-    # __len__ is overridden; __getitem__ returns (C,H,W)
     assert len(ds) == n
     sample = ds[0]
     assert sample.shape == (1, 32, 32)
