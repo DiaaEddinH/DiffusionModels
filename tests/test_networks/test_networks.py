@@ -195,10 +195,10 @@ def test_residual_block_shape_and_finite():
 
 def test_resnet_forward_shape():
     net = ResNet(in_channels=2, channels=[8, 8], time_channels=16)
-    x = torch.randn(2, 8)
+    x = torch.randn(8, 2)
     t = torch.randn(2)
     y = net(x, t)
-    assert y.shape == (2, 8)
+    assert y.shape == (8, 2)
 
 
 def test_even_resnet_is_even_function():
