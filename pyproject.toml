@@ -8,13 +8,14 @@ version = "0.1.0"
 description = "Score-based diffusion models: statistics & utilities"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Diaa Eddin", email = "none@example.com" }]  # update email
+authors = [{ name = "Diaa Eddin", email = "diaaeddinh@gmail.com" }]  # update email
 license = { text = "MIT" }
 dependencies = [
   "numpy>=1.24",
   "scipy>=1.10",
   "torch>=2.0",         # pip name; conda recipe will use pytorch
   "typer>=0.9",
+  "pyyaml>=6.0"
 ]
 
 [project.optional-dependencies]
