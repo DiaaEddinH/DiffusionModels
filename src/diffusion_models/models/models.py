@@ -48,8 +48,9 @@ class ScoreModel(Module):
         network: Module,
         schedule: Optional[Schedule] = None,
         device: str = None,
+        **kwargs
     ) -> None:
-        super().__init__()
+        super().__init__(**kwargs)
         self.network = network
         self.device = device
         self.history = []
@@ -116,8 +117,9 @@ class EnergyBasedModel(ScoreModel):
         network: Module,
         schedule: Optional[Schedule] = None,
         device: str = None,
+        **kwargs
     ):
-        super().__init__(network, schedule, device)
+        super().__init__(network, schedule, device, **kwargs)
 
     def energy(self, x: Tensor, t: Tensor, *labels):
         score = self.network(x, t, *labels)
