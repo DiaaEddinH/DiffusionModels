@@ -50,7 +50,7 @@ class ScoreModel(Module):
         device: str = None,
         **kwargs
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__()
         self.network = network
         self.device = device
         self.history = []
