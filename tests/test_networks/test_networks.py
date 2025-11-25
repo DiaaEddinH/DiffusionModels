@@ -186,7 +186,7 @@ def test_unet_with_attention_forward_shape():
 def test_residual_block_shape_and_finite():
     block = ResBlock(channels=2, time_channels=10)
     x = torch.randn(6, 2)
-    t = torch.randn(6)
+    t = torch.randn(10)
     y = block(x, t)
 
     assert y.shape == x.shape
@@ -194,7 +194,7 @@ def test_residual_block_shape_and_finite():
 
 
 def test_resnet_forward_shape():
-    net = ResNet(in_channels=2, channels=[8, 16], time_channels=10)
+    net = ResNet(in_channels=2, channels=[8, 8], time_channels=16)
     x = torch.randn(2, 8)
     t = torch.randn(2)
     y = net(x, t)
