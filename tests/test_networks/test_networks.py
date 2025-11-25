@@ -6,6 +6,9 @@ from diffusion_models.networks.networks import (
     LinearNet,
     EvenLinear,
     OddLinear,
+    EvenResNet,
+    ResBlock,
+    ResNet,
     ConditionalLinearWrapper,
     ShiftWrapper,
     ws_conv,
@@ -178,3 +181,32 @@ def test_unet_with_attention_forward_shape():
     t = torch.randn(1)
     y = net(x, t)
     assert y.shape == (1, 2, 8, 8)
+
+
+def test_residual_block_shape_and_finite():
+    block = ResBlock(channels=2, time_channels=10)
+    x = torch.randn(6, 2)
+    t = torch.randn(6)
+    y = block(x, t)
+
+    assert y.shape == x.shape
+    assert torch.isfinite(y).all()
+
+
+def test_resnet_forward_shape():
+    net = ResNet(in_channels=2, channels=[8, 16], time_channels=10)
+    x = torch.randn(2, 8)
+    t = torch.randn(2)
+    y = net(x, t)
+    assert y.shape == (2, 8)
+
+
+def test_even_resnet_is_even_function():
+    net = EvenResNet(in_channels=4, channels=[6, 6], time_channels=10)
+    x = torch.randn(5, 4)
+    t = torch.randn(5)
+    y = net(x, t)
+    y_neg = net(-x, t)
+
+    assert y.shape == (5, 4)
+    assert torch.allclose(y, y_neg, atol=1e-5)
