@@ -50,7 +50,7 @@ class Schedule(ABC):
 
 class GeometricSchedule(Schedule):
     """
-    Geometric noise schedule as used in the NCSN paper (copilot said its from this paper, is this true? if not fix).
+    Geometric noise schedule as used in the NCSN paper.
     """
 
     def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
@@ -70,7 +70,7 @@ class GeometricSchedule(Schedule):
 
 class LinearSchedule(Schedule):
     """
-    Linear noise schedule as used in the DDPM paper (copilot said its from this paper, is this true? if not fix).
+    Linear noise schedule as used in the DDPM paper.
     """
 
     def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
