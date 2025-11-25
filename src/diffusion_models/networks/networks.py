@@ -48,7 +48,7 @@ class LinearNet(Module):
         activation: Module = torch.nn.LeakyReLU(),
         dropout_rate: float = 0.2,
         device: str | torch.device = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__()
         self.time_embed = Embedding(embed_dim=time_channels, device=device)
@@ -92,7 +92,7 @@ class EvenLinear(LinearNet):
         activation: Module = torch.nn.LeakyReLU(),
         dropout_rate: float = 0.0,
         device: str | torch.device = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             in_channels,
@@ -101,7 +101,7 @@ class EvenLinear(LinearNet):
             activation,
             dropout_rate,
             device,
-            **kwargs
+            **kwargs,
         )
 
     def _forward_impl(self, x, t):
@@ -126,7 +126,7 @@ class OddLinear(LinearNet):
         activation: Module = torch.nn.LeakyReLU(),
         dropout_rate: float = 0.0,
         device: str | torch.device = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             in_channels,
@@ -135,7 +135,7 @@ class OddLinear(LinearNet):
             activation,
             dropout_rate,
             device,
-            **kwargs
+            **kwargs,
         )
         self.final = torch.nn.Linear(
             channels[-1], in_channels, bias=False, device=device
@@ -210,7 +210,7 @@ class UNet(torch.nn.Module):
         activation: Module = torch.nn.SiLU(),
         padding_mode: str | torch.device = "circular",
         device=None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__()
         self.time_embed = Embedding(embed_dim=time_channels, device=device)
@@ -387,7 +387,7 @@ class UNetWAttention(UNet):
         activation: Module = torch.nn.SiLU(),
         padding_mode: str | torch.device = "circular",
         device=None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             in_channels,
@@ -396,7 +396,7 @@ class UNetWAttention(UNet):
             activation,
             padding_mode,
             device,
-            **kwargs
+            **kwargs,
         )
         self.attention = AttentionBlock(self.channels[-1], num_heads=4, device=device)
 
@@ -420,66 +420,128 @@ class UNetWAttention(UNet):
         return self.final(x)
 
 
-# class UNetWAttention(torch.nn.Module):
-# 	def __init__(
-# 			self,
-# 			in_channels: int = 2,
-# 			channels: list[int] = [64, 128, 256],
-# 			time_channels: int = 32,
-# 			activation: Module = torch.nn.SiLU(),
-# 			dropout_rate: float = 0.2,
-# 			padding_mode: str | torch.device = "circular",
-# 			device= None,
-# 			**kwargs
-# 		) -> None:
-# 		super().__init__()
-# 		self.time_embed = Embedding(embed_dim=time_channels, device=device)
+class ResBlock(Module):
+    def __init__(
+        self,
+        channels: int,
+        time_channels: int,
+        activation: Module = torch.nn.SiLU(),
+        dropout_rate: float = 0.0,
+        device: Optional[str | torch.device] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__()
+        self.layer1 = torch.nn.Linear(channels, channels, device=device)
+        self.layer2 = torch.nn.Linear(channels, channels, device=device)
+        self.time_layer = torch.nn.Linear(time_channels, channels, device=device)
+        self.dropout = torch.nn.Dropout(dropout_rate)
+        self.act = activation
 
-# 		self.channels = channels
-# 		self.channels_r = channels[::-1]
+    def forward(self, *inputs: tuple):
+        return self._forward_impl(*inputs)
 
-# 		self.t_linears = torch.nn.ModuleList([
-# 			torch.nn.Linear(time_channels, c, device=device) for c in self.channels + self.channels_r[1:]
-# 		])
-
-# 		self.down_layers = torch.nn.ModuleList([
-# 			ws_conv(in_channels, self.channels[0], kernel_size=3, dilation=2, bias=False, padding=1, padding_mode=padding_mode, device=device)
-# 		] + [
-# 			ws_conv(c_in, c_out, kernel_size=3, dilation=2, bias=False, padding=1, padding_mode=padding_mode, device=device)
-# 			for c_in, c_out in zip(self.channels, self.channels[1:])
-# 		])
-
-# 		self.up_layers = torch.nn.ModuleList([
-# 			ws_convT(self.channels[-1], self.channels[-2], kernel_size=3, dilation=1, bias=False, output_padding=0, device=device)
-# 		] + [
-# 			ws_convT(2 * c_in, c_out, kernel_size=3, dilation=1, bias=False, output_padding=0, device=device)
-# 			for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
-# 		])
-
-# 		self.act = activation
-# 		self.dropout = torch.nn.Dropout(dropout_rate)
-# 		self.attention = AttentionBlock(self.channels[-1], num_heads=4, device=device)
-# 		self.final = ws_convT(2*channels[0], 1, kernel_size=3, device=device)
+    def _forward_impl(self, x: Tensor, t: Tensor) -> torch.Tensor:
+        residual = x
+        out = self.layer1(x) + self.time_layer(t)
+        out = self.act(out)
+        out = self.layer2(out)
+        return self.act(out + residual)
 
 
-# 	def forward(self, *inputs: tuple):
-# 		return self._forward_impl(*inputs)
+class ResNet(Module):
+    """Simple Dense/Linear feed forward network with residual blocks.
 
-# 	def _forward_impl(self, x, t):
-# 		skip = []
-# 		t_emb = self.time_embed(t)
+    Args:
+            in_channels : int
+                    Input channels. Same as output channels. Defaults to 2
+            channels : List[int]
+                    List of channels of the hidden layers. Defaults to [32, 32]
+            time_channels: int
+                    Embedding dimension of time information features
+            activation: Module
+                    Activation function / Non-linearity
+            dropout_rate: float
+                    Dropout rate. Less is more
+            device: device
+                    Device on which Tensor is allocated.
+    """
 
-# 		for i, layer in enumerate(self.down_layers):
-# 			x = layer(x) + self.t_linears[i](t_emb)[..., None, None];
-# 			x = self.act(x)
-# 			if i != len(self.down_layers) - 1:
-# 				skip.append(x)
+    def __init__(
+        self,
+        in_channels: int = 2,
+        channels: list = [32, 32],
+        time_channels: int = 32,
+        activation: Module = torch.nn.LeakyReLU(),
+        dropout_rate: float = 0.0,
+        device: Optional[str | torch.device] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__()
+        self.time_embed = Embedding(embed_dim=time_channels, device=device)
+        # Network architecture layers
+        self.res_blocks = ModuleList(
+            [
+                ResBlock(c, time_channels, activation, dropout_rate, device=device)
+                for c in channels
+            ]
+        )
+        self.layer_in = torch.nn.Linear(in_channels, channels[0], device=device)
+        self.layer_out = torch.nn.Linear(channels[-1], in_channels, device=device)
 
-# 		x = self.attention(x)
+    def forward(self, *inputs: tuple):
+        return self._forward_impl(*inputs)
 
-# 		for n, layer in enumerate(self.up_layers):
-# 			x = layer(x) + self.t_linears[i + n + 1](t_emb)[..., None, None]
-# 			x = self.act(x)
-# 			x = torch.cat([x, skip.pop()], dim=1)
+    def _forward_impl(self, x: Tensor, t: Tensor) -> torch.Tensor:
+        t_emb = self.time_embed(t)
+        x = self.layer_in(x)
+        for block in self.res_blocks:
+            x = block(x, t_emb)
+        return self.layer_out(x)
 
-# 		return self.final(x)
+
+class EvenResNet(ResNet):
+    """Simple Dense/Linear feed forward network with residual blocks.
+
+    Args:
+            in_channels : int
+                    Input channels. Same as output channels. Defaults to 2
+            channels : List[int]
+                    List of channels of the hidden layers. Defaults to [32, 32]
+            time_channels: int
+                    Embedding dimension of time information features
+            activation: Module
+                    Activation function / Non-linearity
+            dropout_rate: float
+                    Dropout rate. Less is more
+            device: device
+                    Device on which Tensor is allocated.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 2,
+        channels: list = [32, 32],
+        time_channels: int = 32,
+        activation: Module = torch.nn.LeakyReLU(),
+        dropout_rate: float = 0.0,
+        device: Optional[str | torch.device] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            in_channels,
+            channels,
+            time_channels,
+            activation,
+            dropout_rate,
+            device,
+            **kwargs,
+        )
+
+    def _forward_impl(self, x: Tensor, t: Tensor) -> torch.Tensor:
+        t_emb = self.time_embed(t)
+        x_ = self.layer_in(-x)
+        x = self.layer_in(x)
+        for block in self.res_blocks:
+            x = block(x, t_emb)
+            x_ = block(x_, t_emb)
+        return self.layer_out(0.5 * (x + x_))
