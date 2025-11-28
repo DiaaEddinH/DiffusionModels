@@ -2,20 +2,23 @@
 
 
 ## Setting up environment
-The code requires:
-```
-Python >= 3.11 and PyTorch >= 2.0
-```
 
-For conda users:
+# Requirements
+* Conda such as from [miniforge](https://docs.conda.io/en/latest/miniconda.html)
+* Python 3.11 or later
+* Snakemake (Optional)
 
-Make sure you have [conda](https://docs.conda.io/en/latest/miniconda.html) installed and available in your system PATH.
+
+# Setup
+1. Set an environment with the above requirements
+2. Clone repository and `cd` to it:
 
 ```
-conda env create --file=environment.yml
+git clone -b version2 https://github.com/DiaaEddinH/DiffusionModels.git
+cd DiffusionModels
 ```
+3. Pip install it
 
-and activate using:
 ```
-conda activate score_env
+pip install -e .
 ```
