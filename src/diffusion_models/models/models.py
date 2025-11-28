@@ -62,7 +62,7 @@ class ScoreModel(Module):
         d = (x.dim() - 1) * [
             None,
         ]
-        return self.network(x, t, *labels) / self.schedule.stddev(t)[:, *d]
+        return self.network(x, t, *labels) / self.schedule.stddev(t)
 
     def loss_fn(self, batch, *labels, eps: float = 1e-5):
         if self.dims is None:
