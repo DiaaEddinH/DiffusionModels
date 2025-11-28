@@ -2,24 +2,20 @@
 
 
 ## Setting up environment
-
-# Requirements
-* Conda such as from [miniforge](https://docs.conda.io/en/latest/miniconda.html)
-* Python 3.11 or later
-* Snakemake
-
-
-# Setup
-1. Set an environment with the above requirements
-2. Clone repository and `cd` to it:
+The code requires:
 ```
-git clone -b version2 https://github.com/DiaaEddinH/DiffusionModels.git
-cd DiffusionModels
-```
-3. Pip install it
-
-```
-pip install -e .
+Python >= 3.11 and PyTorch >= 2.0
 ```
 
-4. Unzip data `file.zip` from Zenodo
+For conda users:
+
+Make sure you have [conda](https://docs.conda.io/en/latest/miniconda.html) installed and available in your system PATH.
+
+```
+conda env create --file=environment.yml
+```
+
+and activate using:
+```
+conda activate score_env
+```
