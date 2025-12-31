@@ -48,7 +48,7 @@ class ScoreModel(Module):
         network: Module,
         schedule: Optional[Schedule] = None,
         device: str = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__()
         self.network = network
@@ -117,7 +117,7 @@ class EnergyBasedModel(ScoreModel):
         network: Module,
         schedule: Optional[Schedule] = None,
         device: str = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(network, schedule, device, **kwargs)
 

@@ -17,12 +17,12 @@ def em_sampler(
 
     timesteps = torch.linspace(1, eps, num_steps, device=device)
 
-    g_t = model.diffusion_coeff(timesteps)
+    g_t = model.schedule.diffusion_coeff(timesteps)
     step_size = 1 / num_steps
     step_size_sqrt = step_size**0.5
 
     t0 = torch.ones(1, device=device)
-    std = model.stddev(t0)
+    std = model.schedule.stddev(t0)
     x = torch.randn(*shape, device=device) * std
 
     model.eval()
