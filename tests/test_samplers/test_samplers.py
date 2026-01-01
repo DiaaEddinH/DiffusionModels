@@ -135,7 +135,7 @@ def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
     hist = em_sampler(
         drift_only, (batch, dims), num_steps, *labels, history=True, eps=1.0
     )
-    c = 1.0 + drift_only.drift_scale / num_steps
+    c = 1.0 + drift_only.schedule.drift_scale / num_steps
     # Check geometric progression between consecutive frames: x_{k+1} == c * x_k
     # Use a strict equality; math is exact in our DummyModel path.
     assert torch.allclose(hist[1], hist[0] * c)
