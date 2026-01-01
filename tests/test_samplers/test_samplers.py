@@ -2,24 +2,17 @@ import torch
 
 import pytest
 
+from diffusion_models.noise.noise_scheduler import Schedule
 from diffusion_models.sampling.samplers import em_sampler, ot_sampler
 
 
-class DummyModel(torch.nn.Module):
-    def __init__(self, device="cpu", drift_scale=0.0, diff_coeff=1.0, std=1.0):
+class DummySchedule(Schedule):
+    def __init__(self, drift_scale=0.0, diff_coeff=1.0, std=1.0):
         super().__init__()
-        self.device = torch.device(device)
         self.drift_scale = float(drift_scale)
         self._diff = float(diff_coeff)
         self._std = float(std)
-        self.eval_called = False
-        self.seen_labels = None
         self.diffusion_ts = None
-        self.ot_ts = []
-
-    def eval(self):  # track eval() usage
-        self.eval_called = True
-        return super().eval()
 
     def diffusion_coeff(self, t: torch.Tensor):
         # record timesteps for em sampler (a single tensor)
@@ -30,6 +23,20 @@ class DummyModel(torch.nn.Module):
         # constant stddev, shape follows input t
         return torch.full_like(t, self._std)
 
+
+class DummyModel(torch.nn.Module):
+    def __init__(self, schedule: Schedule, device="cpu"):
+        super().__init__()
+        self.device = torch.device(device)
+        self.schedule = schedule
+        self.eval_called = False
+        self.seen_labels = None
+        self.ot_ts = []
+
+    def eval(self):  # track eval() usage
+        self.eval_called = True
+        return super().eval()
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, *labels):
         # record labels and timesteps used by ot_sampler (called each step)
         self.seen_labels = labels
@@ -38,11 +45,12 @@ class DummyModel(torch.nn.Module):
             # t is a batch of identical scalars expanded; capture the scalar value
             self.ot_ts.append(float(t[0].detach().cpu()))
         # simple controlled velocity/drift proportional to x (keeps things stable)
-        return self.drift_scale * x
+        return self.schedule.drift_scale * x
 
 
 def test_ot_sampler_history_and_timesteps_and_no_grad_and_labels():
-    model = DummyModel(device="cpu", drift_scale=0.0)  # v(x,t)=0 => x stays constant
+    schedule = DummySchedule(drift_scale=0.0)
+    model = DummyModel(device="cpu", schedule=schedule)  # v(x,t)=0 => x stays constant
 
     batch, dims = 2, 5
     num_steps = 6
@@ -81,7 +89,8 @@ def test_ot_sampler_history_and_timesteps_and_no_grad_and_labels():
 @pytest.mark.parametrize("device", ["cpu"])  # keep CPU only in CI
 @pytest.mark.parametrize("history", [False, True])
 def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
-    model = DummyModel(device=device, drift_scale=0.0, diff_coeff=1.0, std=2.0)
+    schedule = DummySchedule(drift_scale=0.0, diff_coeff=1.0, std=2.0)
+    model = DummyModel(device=device, schedule=schedule)
 
     batch, dims = 4, 3
     num_steps = 7
@@ -97,10 +106,11 @@ def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
     assert model.seen_labels == labels
 
     # diffusion_coeff should receive the full linspace(1, eps, num_steps)
-    assert model.diffusion_ts is not None
-    assert model.diffusion_ts.shape == (num_steps,)
+    assert model.schedule.diffusion_ts is not None
+    assert model.schedule.diffusion_ts.shape == (num_steps,)
     assert torch.allclose(
-        model.diffusion_ts, torch.linspace(1, eps, num_steps, device=model.device)
+        model.schedule.diffusion_ts,
+        torch.linspace(1, eps, num_steps, device=model.device),
     )
 
     if history:
@@ -120,7 +130,8 @@ def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
     # --- Deterministic drift check (no extra test; keeps suite minimal) ---
     # Disable test_noise by setting eps = 1.0 and use nonzero drift; with g_t=1 the update becomes:
     #   x_{k+1} = x_k + step_size * (drift_scale * x_k) = (1 + drift_scale/num_steps) * x_k
-    drift_only = DummyModel(device=device, drift_scale=0.5, diff_coeff=1.0, std=2.0)
+    schedule = DummySchedule(drift_scale=0.5, diff_coeff=1.0, std=2.0)
+    drift_only = DummyModel(device=device, schedule=schedule)
     hist = em_sampler(
         drift_only, (batch, dims), num_steps, *labels, history=True, eps=1.0
     )
