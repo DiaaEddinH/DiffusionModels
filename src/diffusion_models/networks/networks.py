@@ -209,6 +209,7 @@ class UNet(torch.nn.Module):
         time_channels: int = 32,
         activation: Module = torch.nn.SiLU(),
         padding_mode: str | torch.device = "circular",
+        bias: bool = True,
         device=None,
         **kwargs,
     ) -> None:
@@ -232,7 +233,7 @@ class UNet(torch.nn.Module):
                     self.channels[0],
                     kernel_size=3,
                     dilation=2,
-                    bias=False,
+                    bias=bias,
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
@@ -244,7 +245,7 @@ class UNet(torch.nn.Module):
                     c_out,
                     kernel_size=3,
                     dilation=2,
-                    bias=False,
+                    bias=bias,
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
@@ -260,7 +261,7 @@ class UNet(torch.nn.Module):
                     self.channels[-2],
                     kernel_size=3,
                     dilation=1,
-                    bias=False,
+                    bias=bias,
                     output_padding=0,
                     device=device,
                 )
@@ -271,7 +272,7 @@ class UNet(torch.nn.Module):
                     c_out,
                     kernel_size=3,
                     dilation=1,
-                    bias=False,
+                    bias=bias,
                     output_padding=0,
                     device=device,
                 )
@@ -281,7 +282,7 @@ class UNet(torch.nn.Module):
 
         self.act = activation
         self.final = ws_convT(
-            2 * channels[0], in_channels, kernel_size=3, device=device
+            2 * channels[0], in_channels, kernel_size=3, bias=bias, device=device
         )
 
     def forward(self, *inputs: tuple):
@@ -292,13 +293,13 @@ class UNet(torch.nn.Module):
         t_emb = self.time_embed(t)
 
         for i, layer in enumerate(self.down_layers):
-            x = layer(x) + self.t_linears[i](t_emb)[..., None, None]
+            x = layer(x) * self.t_linears[i](t_emb)[..., None, None]
             x = self.act(x)
             if i != len(self.down_layers) - 1:
                 skip.append(x)
 
         for n, layer in enumerate(self.up_layers):
-            x = layer(x) + self.t_linears[i + n + 1](t_emb)[..., None, None]
+            x = layer(x) * self.t_linears[i + n + 1](t_emb)[..., None, None]
             x = self.act(x)
             x = torch.cat([x, skip.pop()], dim=1)
 
