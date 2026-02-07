@@ -214,10 +214,10 @@ def test_even_resnet_is_even_function():
 
 def test_no_bias_tanh_unet_is_odd_function():
     net = UNet(in_channels=4, channels=[6, 6], time_channels=10, activation=torch.nn.Tanh(), bias=False)
-    x = torch.randn(5, 4)
+    x = torch.randn(5, 4, 8, 8)
     t = torch.randn(5)
     y = net(x, t)
     y_neg = -net(-x, t)
 
-    assert y.shape == (5, 4)
+    assert y.shape == (5, 4, 8, 8)
     assert torch.allclose(y, y_neg, atol=1e-5)
