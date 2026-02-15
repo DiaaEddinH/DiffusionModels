@@ -306,6 +306,115 @@ class UNet(torch.nn.Module):
         return self.final(x)
 
 
+class CNet(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 2,
+        out_channels: Optional[int] = None,
+        channels: list[int] = [64, 128, 256],
+        time_channels: int = 32,
+        activation: Module = torch.nn.SiLU(),
+        padding_mode: str | torch.device = "circular",
+        bias: bool = True,
+        device=None,
+        **kwargs,
+    ) -> None:
+        super().__init__()
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.time_embed = Embedding(embed_dim=time_channels, device=device)
+
+        self.channels = channels
+        self.channels_r = channels[::-1]
+
+        self.t_linears = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(time_channels, c, device=device)
+                for c in self.channels + self.channels_r[1:]
+            ]
+        )
+
+        self.down_layers = torch.nn.ModuleList(
+            [
+                ws_conv(
+                    in_channels,
+                    self.channels[0],
+                    kernel_size=3,
+                    dilation=1,
+                    bias=bias,
+                    padding=1,
+                    padding_mode=padding_mode,
+                    device=device,
+                )
+            ]
+            + [
+                ws_conv(
+                    c_in,
+                    c_out,
+                    kernel_size=3,
+                    dilation=1,
+                    bias=bias,
+                    padding=1,
+                    padding_mode=padding_mode,
+                    device=device,
+                )
+                for c_in, c_out in zip(self.channels, self.channels[1:])
+            ]
+        )
+
+        self.up_layers = torch.nn.ModuleList(
+            [
+                ws_conv(
+                    self.channels[-1],
+                    self.channels[-2],
+                    kernel_size=3,
+                    dilation=1,
+                    bias=bias,
+                    padding=1,
+                    padding_mode=padding_mode,
+                    device=device,
+                )
+            ]
+            + [
+                ws_conv(
+                    2 * c_in,
+                    c_out,
+                    kernel_size=3,
+                    dilation=1,
+                    bias=bias,
+                    padding=1,
+					padding_mode=padding_mode,
+                    device=device,
+                )
+                for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
+            ]
+        )
+
+        self.act = activation
+        self.final = ws_conv(
+            2 * channels[0], self.out_channels, kernel_size=3, padding=1, padding_mode=padding_mode, bias=bias, device=device
+        )
+
+    def forward(self, *inputs: tuple):
+        return self._forward_impl(*inputs)
+
+    def _forward_impl(self, x, t):
+        skip = []
+        t_emb = self.time_embed(t)
+
+        for i, layer in enumerate(self.down_layers):
+            x = layer(x) * self.t_linears[i](t_emb)[..., None, None]
+            x = self.act(x)
+            if i != len(self.down_layers) - 1:
+                skip.append(x)
+
+        for n, layer in enumerate(self.up_layers):
+            x = layer(x) * self.t_linears[i + n + 1](t_emb)[..., None, None]
+            x = self.act(x)
+            x = torch.cat([x, skip.pop()], dim=1)
+
+        return self.final(x)
+
+
 class LinearAttention(Module):
     def __init__(self, channels, heads=4, dim_head=32, device: str = None):
         super().__init__()
