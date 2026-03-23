@@ -165,10 +165,14 @@ def test_ws_conv_and_ws_convT_have_correct_dim_impl():
 
 def test_unet_forward_shape():
     net = UNet(in_channels=2, channels=[8, 16], time_channels=12)
+    net3 = UNet(in_channels=2, channels=[8, 16], time_channels=12, dim=3)
     x = torch.randn(2, 2, 8, 8)
+    x3 = torch.randn(2, 2, 8, 8, 8)
     t = torch.randn(2)
     y = net(x, t)
+    y3 = net(x3, t)
     assert y.shape == (2, 2, 8, 8)
+    assert y3.shape == (2, 2, 8, 8, 8)
 
 
 def test_linear_attention_forward_shape_and_finite():
