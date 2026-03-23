@@ -142,8 +142,8 @@ def test_shift_wrapper_applies_expected_shift():
 
 
 def test_ws_conv_and_ws_convT_have_weight_norm():
-    c = ws_conv(2, 3, 5, kernel_size=3, padding=1)
-    ct = ws_convT(2, 4, 2, kernel_size=3)
+    c = ws_conv(3, 5, kernel_size=3, padding=1)
+    ct = ws_convT(4, 2, kernel_size=3)
 
     # weight_norm should register a parametrization on the weight
     assert hasattr(c, "parametrizations") and "weight" in c.parametrizations
@@ -151,10 +151,10 @@ def test_ws_conv_and_ws_convT_have_weight_norm():
 
 
 def test_ws_conv_and_ws_convT_have_correct_dim_impl():
-    c1 = ws_conv(2, 3, 2, kernel_size=3, padding=1)
-    c2 = ws_conv(3, 3, 2, kernel_size=3, padding=1)
-    ct1 = ws_convT(2, 3, 2, kernel_size=3, padding=1)
-    ct2 = ws_convT(3, 3, 2, kernel_size=3, padding=1)
+    c1 = ws_conv(3, 2, dim=2, kernel_size=3, padding=1)
+    c2 = ws_conv(3, 2, dim=3, kernel_size=3, padding=1)
+    ct1 = ws_convT(3, 2, dim=2, kernel_size=3, padding=1)
+    ct2 = ws_convT(3, 2, dim=3, kernel_size=3, padding=1)
 
     # weight_norm should register a parametrization on the weight
     assert isinstance(c1, torch.nn.Conv2d)
