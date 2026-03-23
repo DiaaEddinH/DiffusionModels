@@ -150,6 +150,19 @@ def test_ws_conv_and_ws_convT_have_weight_norm():
     assert hasattr(ct, "parametrizations") and "weight" in ct.parametrizations
 
 
+def test_ws_conv_and_ws_convT_have_correct_dim_impl():
+    c1 = ws_conv(2, 3, 2, kernel_size=3, padding=1)
+    c2 = ws_conv(3, 3, 2, kernel_size=3, padding=1)
+    ct1 = ws_convT(2, 3, 2, kernel_size=3, padding=1)
+    ct2 = ws_convT(3, 3, 2, kernel_size=3, padding=1)
+
+    # weight_norm should register a parametrization on the weight
+    assert isinstance(c1, torch.nn.Conv2d)
+    assert isinstance(c2, torch.nn.Conv3d)
+    assert isinstance(ct1, torch.nn.ConvTranspose2d)
+    assert isinstance(ct2, torch.nn.ConvTranspose3d)
+
+
 def test_unet_forward_shape():
     net = UNet(in_channels=2, channels=[8, 16], time_channels=12)
     x = torch.randn(2, 2, 8, 8)
@@ -213,7 +226,13 @@ def test_even_resnet_is_even_function():
 
 
 def test_no_bias_tanh_unet_is_odd_function():
-    net = UNet(in_channels=4, channels=[6, 6], time_channels=10, activation=torch.nn.Tanh(), bias=False)
+    net = UNet(
+        in_channels=4,
+        channels=[6, 6],
+        time_channels=10,
+        activation=torch.nn.Tanh(),
+        bias=False,
+    )
     x = torch.randn(5, 4, 8, 8)
     t = torch.randn(5)
     y = net(x, t)

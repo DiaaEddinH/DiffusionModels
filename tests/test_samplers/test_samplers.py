@@ -91,7 +91,7 @@ def test_ot_sampler_history_and_timesteps_and_no_grad_and_labels():
 def test_em_sampler_shapes_and_device_and_eval_and_labels(device, history):
     schedule = DummySchedule(drift_scale=0.0, diff_coeff=1.0, std=2.0)
     model = DummyModel(device=device, schedule=schedule)
-    
+
     batch, dims = 4, 3
     num_steps = 7
     eps = 1e-3

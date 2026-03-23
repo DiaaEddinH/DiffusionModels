@@ -193,12 +193,23 @@ class ShiftWrapper(Module):
 
 
 # Instead we just apply WS to conv layers for stability
-def ws_conv(*args, **kwargs):
-    return weight_norm(torch.nn.Conv2d(*args, **kwargs))
+def ws_conv(dim: int = 2, *args, **kwargs):
+    if dim == 2:
+        conv = torch.nn.Conv2d
+    elif dim == 3:
+        conv = torch.nn.Conv3d
+    else:
+        raise ValueError(f"Conv{dim}d is not an implemented/available functionality!")
+    return weight_norm(conv(*args, **kwargs))
 
-
-def ws_convT(*args, **kwargs):
-    return weight_norm(torch.nn.ConvTranspose2d(*args, **kwargs))
+def ws_convT(dim: int = 2, *args, **kwargs):
+    if dim == 2:
+        conv = torch.nn.ConvTranspose2d
+    elif dim == 3:
+        conv = torch.nn.ConvTranspose3d
+    else:
+        raise ValueError(f"ConvTranspose{dim}d is not an implemented/available functionality!")
+    return weight_norm(conv(*args, **kwargs))
 
 
 class UNet(torch.nn.Module):
@@ -210,6 +221,7 @@ class UNet(torch.nn.Module):
         activation: Module = torch.nn.SiLU(),
         padding_mode: str | torch.device = "circular",
         bias: bool = True,
+        dim: int = 2,
         device=None,
         **kwargs,
     ) -> None:
@@ -237,6 +249,7 @@ class UNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
             ]
             + [
@@ -249,6 +262,7 @@ class UNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
                 for c_in, c_out in zip(self.channels, self.channels[1:])
             ]
@@ -264,6 +278,7 @@ class UNet(torch.nn.Module):
                     bias=bias,
                     output_padding=0,
                     device=device,
+                    dim=dim
                 )
             ]
             + [
@@ -275,6 +290,7 @@ class UNet(torch.nn.Module):
                     bias=bias,
                     output_padding=0,
                     device=device,
+                    dim=dim
                 )
                 for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
             ]
@@ -282,7 +298,7 @@ class UNet(torch.nn.Module):
 
         self.act = activation
         self.final = ws_convT(
-            2 * channels[0], in_channels, kernel_size=3, bias=bias, device=device
+            2 * channels[0], in_channels, kernel_size=3, bias=bias, device=device, dim=dim
         )
 
     def forward(self, *inputs: tuple):
@@ -316,6 +332,7 @@ class CNet(torch.nn.Module):
         activation: Module = torch.nn.SiLU(),
         padding_mode: str | torch.device = "circular",
         bias: bool = True,
+        dim: int = 2,
         device=None,
         **kwargs,
     ) -> None:
@@ -344,6 +361,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
             ]
             + [
@@ -356,6 +374,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
                 for c_in, c_out in zip(self.channels, self.channels[1:])
             ]
@@ -372,6 +391,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
             ]
             + [
@@ -382,8 +402,9 @@ class CNet(torch.nn.Module):
                     dilation=1,
                     bias=bias,
                     padding=1,
-					padding_mode=padding_mode,
+                    padding_mode=padding_mode,
                     device=device,
+                    dim=dim
                 )
                 for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
             ]
@@ -391,7 +412,14 @@ class CNet(torch.nn.Module):
 
         self.act = activation
         self.final = ws_conv(
-            2 * channels[0], self.out_channels, kernel_size=3, padding=1, padding_mode=padding_mode, bias=bias, device=device
+            2 * channels[0],
+            self.out_channels,
+            kernel_size=3,
+            padding=1,
+            padding_mode=padding_mode,
+            bias=bias,
+            device=device,
+            dim=dim
         )
 
     def forward(self, *inputs: tuple):
@@ -562,18 +590,18 @@ class ResNet(Module):
     """Simple Dense/Linear feed forward network with residual blocks.
 
     Args:
-            in_channels : int
-                    Input channels. Same as output channels. Defaults to 2
-            channels : List[int]
-                    List of channels of the hidden layers. Defaults to [32, 32]
-            time_channels: int
-                    Embedding dimension of time information features
-            activation: Module
-                    Activation function / Non-linearity
-            dropout_rate: float
-                    Dropout rate. Less is more
-            device: device
-                    Device on which Tensor is allocated.
+                    in_channels : int
+                                    Input channels. Same as output channels. Defaults to 2
+                    channels : List[int]
+                                    List of channels of the hidden layers. Defaults to [32, 32]
+                    time_channels: int
+                                    Embedding dimension of time information features
+                    activation: Module
+                                    Activation function / Non-linearity
+                    dropout_rate: float
+                                    Dropout rate. Less is more
+                    device: device
+                                    Device on which Tensor is allocated.
     """
 
     def __init__(
@@ -613,18 +641,18 @@ class EvenResNet(ResNet):
     """Simple Dense/Linear feed forward network with residual blocks.
 
     Args:
-            in_channels : int
-                    Input channels. Same as output channels. Defaults to 2
-            channels : List[int]
-                    List of channels of the hidden layers. Defaults to [32, 32]
-            time_channels: int
-                    Embedding dimension of time information features
-            activation: Module
-                    Activation function / Non-linearity
-            dropout_rate: float
-                    Dropout rate. Less is more
-            device: device
-                    Device on which Tensor is allocated.
+                    in_channels : int
+                                    Input channels. Same as output channels. Defaults to 2
+                    channels : List[int]
+                                    List of channels of the hidden layers. Defaults to [32, 32]
+                    time_channels: int
+                                    Embedding dimension of time information features
+                    activation: Module
+                                    Activation function / Non-linearity
+                    dropout_rate: float
+                                    Dropout rate. Less is more
+                    device: device
+                                    Device on which Tensor is allocated.
     """
 
     def __init__(
