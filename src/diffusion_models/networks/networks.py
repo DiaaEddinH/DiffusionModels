@@ -305,10 +305,12 @@ class UNet(torch.nn.Module):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
-        d = (x.dim() - 1) * [None, ]
+        d = (x.dim() - 2) * [None, ]
 
         for i, layer in enumerate(self.down_layers):
-            x = layer(x) * self.t_linears[i](t_emb)[..., *d]
+            test_t = self.t_linears[i](t_emb)[..., *d]
+            print(test_t.shape)
+            x = layer(x) * test_t
             x = self.act(x)
             if i != len(self.down_layers) - 1:
                 skip.append(x)
@@ -427,7 +429,7 @@ class CNet(torch.nn.Module):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
-        d = (x.dim() - 1) * [None, ]
+        d = (x.dim() - 2) * [None, ]
 
         for i, layer in enumerate(self.down_layers):
             x = layer(x) * self.t_linears[i](t_emb)[..., *d]
@@ -541,9 +543,10 @@ class UNetWAttention(UNet):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
+        d = (x.dim() - 2) * [None, ]
 
         for i, layer in enumerate(self.down_layers):
-            x = layer(x) + self.t_linears[i](t_emb)[..., None, None]
+            x = layer(x) + self.t_linears[i](t_emb)[..., *d]
             x = self.act(x)
             if i != len(self.down_layers) - 1:
                 skip.append(x)
@@ -551,7 +554,7 @@ class UNetWAttention(UNet):
         x = self.attention(x)
 
         for n, layer in enumerate(self.up_layers):
-            x = layer(x) + self.t_linears[i + n + 1](t_emb)[..., None, None]
+            x = layer(x) + self.t_linears[i + n + 1](t_emb)[..., *d]
             x = self.act(x)
             x = torch.cat([x, skip.pop()], dim=1)
 
