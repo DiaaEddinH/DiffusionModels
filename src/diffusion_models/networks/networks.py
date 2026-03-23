@@ -193,23 +193,21 @@ class ShiftWrapper(Module):
 
 
 # Instead we just apply WS to conv layers for stability
-def ws_conv(dim: int = 2, *args, **kwargs):
-    if dim == 2:
-        conv = torch.nn.Conv2d
-    elif dim == 3:
-        conv = torch.nn.Conv3d
-    else:
+def ws_conv(*args, dim: int = 2, **kwargs):
+    try:
+        conv_cls = getattr(torch.nn, f"Conv{dim}d")
+    except KeyError:
         raise ValueError(f"Conv{dim}d is not an implemented/available functionality!")
-    return weight_norm(conv(*args, **kwargs))
+    
+    return weight_norm(conv_cls(*args, **kwargs))
 
-def ws_convT(dim: int = 2, *args, **kwargs):
-    if dim == 2:
-        conv = torch.nn.ConvTranspose2d
-    elif dim == 3:
-        conv = torch.nn.ConvTranspose3d
-    else:
+def ws_convT(*args, dim: int = 2, **kwargs):
+    try:
+        conv_cls = conv_cls = getattr(torch.nn, f"ConvTranspose{dim}d")
+    except KeyError:
         raise ValueError(f"ConvTranspose{dim}d is not an implemented/available functionality!")
-    return weight_norm(conv(*args, **kwargs))
+    
+    return weight_norm(conv_cls(*args, **kwargs))
 
 
 class UNet(torch.nn.Module):

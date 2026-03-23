@@ -142,8 +142,8 @@ def test_shift_wrapper_applies_expected_shift():
 
 
 def test_ws_conv_and_ws_convT_have_weight_norm():
-    c = ws_conv(3, 5, kernel_size=3, padding=1)
-    ct = ws_convT(4, 2, kernel_size=3)
+    c = ws_conv(2, 3, 5, kernel_size=3, padding=1)
+    ct = ws_convT(2, 4, 2, kernel_size=3)
 
     # weight_norm should register a parametrization on the weight
     assert hasattr(c, "parametrizations") and "weight" in c.parametrizations
