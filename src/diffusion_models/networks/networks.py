@@ -522,6 +522,7 @@ class UNetWAttention(UNet):
     def __init__(
         self,
         in_channels: int = 2,
+        out_channels: Optional[int] = None,
         channels: list[int] = [64, 128, 256],
         time_channels: int = 32,
         activation: Module = torch.nn.SiLU(),
@@ -531,6 +532,7 @@ class UNetWAttention(UNet):
     ) -> None:
         super().__init__(
             in_channels,
+            out_channels,
             channels,
             time_channels,
             activation,
