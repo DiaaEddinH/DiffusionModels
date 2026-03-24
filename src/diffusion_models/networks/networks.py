@@ -214,6 +214,7 @@ class UNet(torch.nn.Module):
     def __init__(
         self,
         in_channels: int = 2,
+        out_channels: Optional[int] = None,
         channels: list[int] = [64, 128, 256],
         time_channels: int = 32,
         activation: Module = torch.nn.SiLU(),
@@ -224,6 +225,7 @@ class UNet(torch.nn.Module):
         **kwargs,
     ) -> None:
         super().__init__()
+        self.out_channels = in_channels if out_channels is None else out_channels
         self.time_embed = Embedding(embed_dim=time_channels, device=device)
 
         self.channels = channels
@@ -296,7 +298,7 @@ class UNet(torch.nn.Module):
 
         self.act = activation
         self.final = ws_convT(
-            2 * channels[0], in_channels, kernel_size=3, bias=bias, device=device, dim=dim
+            2 * channels[0], self.out_channels, kernel_size=3, bias=bias, device=device, dim=dim
         )
 
     def forward(self, *inputs: tuple):
