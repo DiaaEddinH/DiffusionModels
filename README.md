@@ -14,7 +14,7 @@
 2. Clone repository and `cd` to it:
 
 ```
-git clone -b version2 https://github.com/DiaaEddinH/DiffusionModels.git
+git clone -b <branch_name> https://github.com/DiaaEddinH/DiffusionModels.git
 cd DiffusionModels
 ```
 3. Pip install it
