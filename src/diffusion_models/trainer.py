@@ -164,7 +164,7 @@ class Trainer:
             num_items = 0
 
             # Shuffle between epochs if using DistributedSampler
-            if isinstance(loader.sampler, DistributedSampler):
+            if hasattr(loader.sampler, "set_epoch"):
                 loader.sampler.set_epoch(epoch)
 
             for batch in loader:
