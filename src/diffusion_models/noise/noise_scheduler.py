@@ -67,7 +67,6 @@ class Schedule(ABC):
         :return: A tuple ``(mean, stddev)`` of the perturbed data.
         :rtype: tuple[Tensor, Tensor]
         """
-        return x, self.stddev(t)
 
 
 class GeometricSchedule(Schedule):
