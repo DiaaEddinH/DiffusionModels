@@ -1,27 +1,41 @@
-.DS_Store
+# Ignore common python files
 __pycache__
-.vscode
 .pytest_cache
-bin/testing.ipynb
-clean_environment.sh
+
 
 # Ignore all .yaml files except example_config.yaml
 *.yaml
+configs/*.yaml
 !example_config.yaml
 !CI_tests.yaml
-configs/*.yaml
 !configs/example_config.yaml
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints
 *.ipynb
+
 # Ignore virtual environment directories
 env/
 venv/
 ENV/
 .venv/
+
 # Ignore IDE specific files
 .vscode
+
 # Ignore system files
 .DS_Store
 .idea
+
+# Sphinx documentation
+docs/build
+
+# Auxilliary bash script
+clean_environment.sh
+
+# ruff
+.ruff_cache
+
+# Poetry local config file
+poetry.toml
+
