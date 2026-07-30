@@ -1,49 +1,71 @@
-from __future__ import annotations
-
 import math
-from abc import ABC, abstractmethod
-from typing import Tuple
-
 import torch
+
+from torch import Tensor
+from abc import ABC, abstractmethod
 
 
 class Schedule(ABC):
     """
-    Abstract class for defining the noise schedule for diffusion models.
-    The noise schedule defines how the noise level changes over time.
+    Abstract class for defining the noise schedule of diffusion models.
+
+    The noise schedule defines how the noise level changes over time and
+    determines the corresponding coefficients of the PDE.
+
+    Parameters
+    ----------
+    arg_min : float
+        Lower bound of the schedule parameter.
+    arg_max : float
+        Upper bound of the schedule parameter.
+
+
+    Notes
+    -----
+    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff` and :meth:`mean_stddev`.
+
+    See also
+    --------
+    :doc:`/diffusion
     """
 
-    sigma_min: float
-    """
-    Minimum standard deviation of the noise.
-    """
-
-    sigma_max: float
-    """
-    Maximum standard deviation of the noise.
-    """
-
-    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
-        self.sigma_min = sigma_min
-        self.sigma_max = sigma_max
+    def __init__(self, arg_min: float, arg_max: float):
+        self.arg_min = arg_min
+        self.arg_max = arg_max
 
     @abstractmethod
-    def stddev(self, t: torch.Tensor) -> torch.Tensor:
+    def stddev(self, t: Tensor) -> Tensor:
         """
-        Compute the standard deviation of the noise at time t.
+        Computes the standard deviation of the noise at time ``t``.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Standard deviation corresponding to each value ``t``.
+        :rtype: Tensor
         """
 
     @abstractmethod
-    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
+    def diffusion_coeff(self, t: Tensor) -> Tensor:
         """
-        Compute the diffusion coefficient at time t.
+        Computes the diffusion coefficient of the diffusion process at time ``t``.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Diffusion coefficient corresponding to each value ``t``.
+        :rtype: Tensor
         """
 
-    def mean_stddev(
-        self, x: torch.Tensor, t: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    @abstractmethod
+    def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         """
-        Compute the mean and standard deviation of the perturbed data at time t.
+        Computes the mean and standard deviation of the perturbed data at time ``t``.
+
+        :param x: Input data
+        :type x: Tensor
+        :param t: Time values at which to evaluate the perturbation.
+        :type t: Tensor
+        :return: A tuple ``(mean, stddev)`` of the perturbed data.
+        :rtype: tuple[Tensor, Tensor]
         """
         return x, self.stddev(t)
 
@@ -58,14 +80,14 @@ class GeometricSchedule(Schedule):
 
     @property
     def _logsigma(self) -> float:
-        return math.log(self.sigma_max / self.sigma_min)
+        return math.log(self.arg_max / self.arg_min)
 
-    def stddev(self, t: torch.Tensor) -> torch.Tensor:
+    def stddev(self, t: Tensor) -> Tensor:
         L = self._logsigma
-        return self.sigma_min * torch.sqrt((torch.exp(2 * t * L) - 1) / (2 * L))
+        return self.arg_min * torch.sqrt((torch.exp(2 * t * L) - 1) / (2 * L))
 
-    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
-        return self.sigma_min * torch.exp(t * self._logsigma)
+    def diffusion_coeff(self, t: Tensor) -> Tensor:
+        return self.arg_min * torch.exp(t * self._logsigma)
 
 
 class LinearSchedule(Schedule):
@@ -73,16 +95,16 @@ class LinearSchedule(Schedule):
     Linear noise schedule as used in the DDPM paper.
     """
 
-    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
-        super().__init__(sigma_min, sigma_max)
+    def __init__(self, arg_min: float = 0.02, arg_max: float = 10.0):
+        super().__init__(arg_min, arg_max)
 
     @property
     def _delta(self) -> float:
-        return self.sigma_max - self.sigma_min
+        return self.arg_max - self.arg_min
 
-    def stddev(self, t: torch.Tensor) -> torch.Tensor:
-        return self.sigma_min + self._delta * t
+    def stddev(self, t: Tensor) -> Tensor:
+        return self.arg_min + self._delta * t
 
-    def diffusion_coeff(self, t: torch.Tensor) -> torch.Tensor:
+    def diffusion_coeff(self, t: Tensor) -> Tensor:
         # Constant w.r.t. t
         return self._delta * torch.ones_like(t)
