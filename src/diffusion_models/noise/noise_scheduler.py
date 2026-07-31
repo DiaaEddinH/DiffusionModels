@@ -26,7 +26,7 @@ class Schedule(ABC):
 
     See also
     --------
-    :doc:`/diffusion
+    :doc:`diffusion`
     """
 
     def __init__(self, arg_min: float, arg_max: float):
@@ -71,39 +71,181 @@ class Schedule(ABC):
 
 class GeometricSchedule(Schedule):
     """
-    Geometric noise schedule as used in the NCSN paper.
+    Noise scheduler based on the geometric schedule used in NCSN, see `arXiv:1907.05600 <https://arxiv.org/abs/1907.05600>`_.
+    Schedule has been adjusted for continuous time, see `arXiv:2011.13456 <https://arxiv.org/abs/2011.13456>`_.
+    This schedule is intended for variance expanding (VE) diffusion processes. This process is defined by the following SDE
+
+    .. math::
+
+        dx_t = \\sigma_{\\min} \\left( \\frac{\\sigma_{\\max}}{\\sigma_{\\min}} \\right)^t dW_t
+
+
+    Parameters
+    ----------
+    sigma_min : float
+        Lower bound of the schedule noise scale.
+    sigma_max : float
+        Upper bound of the schedule noise scale.
     """
 
-    def __init__(self, sigma_min: float = 0.02, sigma_max: float = 10.0):
+    def __init__(self, sigma_min: float = 1.0, sigma_max: float = 10.0):
         super().__init__(sigma_min, sigma_max)
 
     @property
     def _logsigma(self) -> float:
+        """
+        :return: Logarithmic ratio of the noise scale bounds
+        :rtype: float
+        """
         return math.log(self.arg_max / self.arg_min)
 
     def stddev(self, t: Tensor) -> Tensor:
+        """
+        Evaluates the standard deviation of the noise schedule
+
+        .. math::
+
+            \\sigma(t) = \\sigma_{\\min} \\left(\\frac{\\alpha^{2t} - 1}{\\log(\\alpha^2)}\\right)^\\frac{1}{2},
+
+        where :math:`\\alpha = \\frac{\\sigma_{\\max}}{\\sigma_{\\min}}`.
+
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Standard deviation corresponding to each value ``t``.
+        :rtype: Tensor
+        """
         L = self._logsigma
         return self.arg_min * torch.sqrt((torch.exp(2 * t * L) - 1) / (2 * L))
 
     def diffusion_coeff(self, t: Tensor) -> Tensor:
+        """
+        Computes the diffusion coefficient of the diffusion process at time ``t``.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Diffusion coefficient corresponding to each value ``t``.
+        :rtype: Tensor
+        """
         return self.arg_min * torch.exp(t * self._logsigma)
+
+    def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Computes the mean and standard deviation of the perturbed data at time ``t``.
+
+        :param x: Input data
+        :type x: Tensor
+        :param t: Time values at which to evaluate the perturbation.
+        :type t: Tensor
+        :return: A tuple ``(mean, stddev)`` of the perturbed data.
+        :rtype: tuple[Tensor, Tensor]
+        """
+        return x, self.stddev(t)
+
+    """
+    Noise scheduler based on the geometric schedule used in NCSN, see `arXiv:1907.05600 <https://arxiv.org/abs/1907.05600>`_. 
+    Schedule has been adjusted for continuous time, see `arXiv:2011.13456 <https://arxiv.org/abs/2011.13456>`_. 
+    This schedule is intended for variance expanding (VE) diffusion processes. This process is defined by the following SDE
+
+    .. math::
+
+        \\rm dx_t = \\sigma_{\\min} \\left( \\frac{\\sigma_{\\max}}{\\sigma_{\\min}} \\right)^t dW_t
+
+
+    Parameters
+    ----------
+    sigma_min : float
+        Lower bound of the schedule noise scale.
+    sigma_max : float
+        Upper bound of the schedule noise scale.
+    """
 
 
 class LinearSchedule(Schedule):
     """
-    Linear noise schedule as used in the DDPM paper.
+    Noise scheduler based on the linear schedule used in DDPMs, see `arXiv:2006.11239 <https://arxiv.org/abs/2006.11239>`_.
+    Schedule has been adjusted for continuous time, see `arXiv:2011.13456 <https://arxiv.org/abs/2011.13456>`_.
+    This schedule is intended for variance preserving (VP) diffusion processes. This process is defined by the following SDE
+
+    .. math::
+
+        \\rm dx_t = -\\frac{1}{2} \\beta(t) x_t + \\sqrt{\\beta(t)} dW_t
+
+
+    Parameters
+    ----------
+    sigma_min : float
+        Lower bound of the schedule noise scale.
+    sigma_max : float
+        Upper bound of the schedule noise scale.
     """
 
-    def __init__(self, arg_min: float = 0.02, arg_max: float = 10.0):
-        super().__init__(arg_min, arg_max)
+    def __init__(self, beta_min: float = 0.02, beta_max: float = 10.0):
+        super().__init__(beta_min, beta_max)
 
     @property
     def _delta(self) -> float:
         return self.arg_max - self.arg_min
 
-    def stddev(self, t: Tensor) -> Tensor:
+    def beta_schedule(self, t: Tensor) -> Tensor:
+        """
+        Evaluates the noise schedule :math:`\\beta(t) = \\beta_{\\min} + (\\beta_{\\max} - \\beta_{\\min})` for each time ``t``.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Noise scale corresponding to each value ``t``.
+        :rtype: Tensor
+        """
         return self.arg_min + self._delta * t
 
+    def mean_factor(self, t: Tensor) -> Tensor:
+        """
+        Calculates rescaling factor for the mean value during the process
+
+        .. math::
+
+            m(t) = \\exp\\left(-\\frac{1}{2}\\int_0^t \\; \\beta(s) \\rm ds\\right).
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Mean rescaling corresponding to each value ``t``.
+        :rtype: Tensor
+        """
+        beta_integral = self.arg_min * t + 0.5 * self._delta * t**2
+        return torch.exp(-0.5 * beta_integral)
+
+    def stddev(self, t: Tensor) -> Tensor:
+        """
+        Evaluates the standard deviation of the noise schedule, :math:`\\sigma(t) = \\sqrt{1 - m^2(t)}`.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Standard deviation corresponding to each value ``t``.
+        :rtype: Tensor
+        """
+        return torch.sqrt(1 - self.mean_factor(t) ** 2)
+
     def diffusion_coeff(self, t: Tensor) -> Tensor:
-        # Constant w.r.t. t
-        return self._delta * torch.ones_like(t)
+        """
+        Computes the diffusion coefficient of the diffusion process at time ``t``.
+
+        :param t: Time values at which to evaluate the schedule.
+        :type t: Tensor
+        :return: Diffusion coefficient corresponding to each value ``t``.
+        :rtype: Tensor
+        """
+        return torch.sqrt(self.beta_schedule(t))
+
+    def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Computes the mean and standard deviation of the perturbed data at time ``t``.
+
+        :param x: Input data
+        :type x: Tensor
+        :param t: Time values at which to evaluate the perturbation.
+        :type t: Tensor
+        :return: A tuple ``(mean, stddev)`` of the perturbed data.
+        :rtype: tuple[Tensor, Tensor]
+        """
+        d = (x.dim() - 1) * (None,)
+        return self.mean_factor(t)[:, *d] * x, self.stddev(t)[:, *d]

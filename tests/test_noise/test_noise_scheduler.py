@@ -45,28 +45,47 @@ def test_geometric_schedule_meaningful_properties_and_api():
 
 
 def test_linear_schedule_meaningful_properties_and_api():
-    sigma_min = 0.1
-    sigma_max = 1.1
+    beta_min = 0.1
+    beta_max = 1.1
 
-    obj = LinearSchedule(sigma_min=sigma_min, sigma_max=sigma_max)
+    obj = LinearSchedule(beta_min=beta_min, beta_max=beta_max)
 
     # Use float32 here to also exercise different dtype
     t = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], dtype=torch.float32)
 
-    # stddev: exact linear interpolation
-    std = obj.stddev(t)
-    expected_std = sigma_min + (sigma_max - sigma_min) * t
-    assert std.shape == t.shape and std.dtype == t.dtype
-    assert torch.allclose(std, expected_std, rtol=0.0, atol=0.0)
+    # schedule: exact linear interpolation
+    schedule = obj.beta_schedule(t)
+    expected_schedule = beta_min + (beta_max - beta_min) * t
+    assert schedule.shape == t.shape and schedule.dtype == t.dtype
+    assert torch.allclose(schedule, expected_schedule, rtol=0.0, atol=0.0)
 
-    # diffusion_coeff: constant equal to (sigma_max - sigma_min)
+    # diffusion_coeff: equal to sqrt(schedule)
     d = obj.diffusion_coeff(t)
-    expected_d = torch.full_like(t, sigma_max - sigma_min)
+    expected_d = torch.sqrt(expected_schedule)
     assert d.shape == t.shape and d.dtype == t.dtype
     assert torch.allclose(d, expected_d, rtol=0.0, atol=0.0)
 
+    # mean_factor: equal to exp(-1/2 int^t_0 schedule(t))
+    m = obj.mean_factor(t)
+    expected_m = torch.exp(-0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t**2))
+    assert m.shape == t.shape and m.dtype == t.dtype
+    assert torch.allclose(m, expected_m, rtol=0.0, atol=0.0)
+    assert torch.allclose(
+        obj.mean_factor(torch.zeros(1)), torch.ones(1), rtol=0.0, atol=0.0
+    )
+
+    # stddev: equal to sqrt(1 - mean_factor^2)
+    std = obj.stddev(t)
+    expected_std = torch.sqrt(1 - m**2)
+    assert obj.stddev(torch.zeros(1)) == torch.zeros(1)
+    assert torch.allclose(
+        obj.stddev(torch.zeros(1)), torch.zeros(1), rtol=0.0, atol=0.0
+    )
+    assert std.shape == t.shape and std.dtype == t.dtype
+    assert torch.allclose(std, expected_std, rtol=0.0, atol=0.0)
+
     # get_mean_stddev: passthrough + pairing with stddev(t)
-    x = torch.randn(4, 3, dtype=t.dtype)
+    x = torch.randn(t.shape[0], 4, 3, dtype=t.dtype)
     mean, std_pair = obj.mean_stddev(x, t)
-    assert mean is x
-    assert torch.allclose(std_pair, std, rtol=0.0, atol=0.0)
+    assert torch.allclose(mean, x * expected_m[:, None, None], rtol=0.0, atol=0.0)
+    assert torch.allclose(std_pair, std[:, None, None], rtol=0.0, atol=0.0)
