@@ -8,7 +8,7 @@ from diffusion_models.sampling.samplers import em_sampler, ot_sampler
 
 class DummySchedule(Schedule):
     def __init__(self, drift_scale=0.0, diff_coeff=1.0, std=1.0):
-        super().__init__()
+        super().__init__(arg_min=0, arg_max=0)
         self.drift_scale = float(drift_scale)
         self._diff = float(diff_coeff)
         self._std = float(std)
@@ -22,6 +22,11 @@ class DummySchedule(Schedule):
     def stddev(self, t: torch.Tensor):
         # constant stddev, shape follows input t
         return torch.full_like(t, self._std)
+
+    def mean_stddev(self, x: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # identically return input `x`
+        d = (x.dim() - 1) * (None,)
+        return x, self.stddev(t)[:, *d]
 
 
 class DummyModel(torch.nn.Module):

@@ -140,7 +140,8 @@ class GeometricSchedule(Schedule):
         :return: A tuple ``(mean, stddev)`` of the perturbed data.
         :rtype: tuple[Tensor, Tensor]
         """
-        return x, self.stddev(t)
+        d = (x.dim() - 1) * (None,)
+        return x, self.stddev(t)[:, *d]
 
     """
     Noise scheduler based on the geometric schedule used in NCSN, see `arXiv:1907.05600 <https://arxiv.org/abs/1907.05600>`_. 

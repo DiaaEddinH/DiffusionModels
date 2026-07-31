@@ -75,7 +75,6 @@ class ScoreModel(Module):
 
         random_t = torch.rand(batch.shape[0], device=self.device) * (1.0 - eps) + eps
         mean, std = self.schedule.mean_stddev(batch, random_t)
-        std = std[:, *d]
 
         perturbed_x = mean + z * std
 
@@ -152,7 +151,6 @@ class EnergyBasedModel(ScoreModel):
 
         random_t = torch.rand(batch.shape[0], device=self.device) * (1.0 - eps) + eps
         mean, std = self.schedule.mean_stddev(batch, random_t)
-        std = std[:, *d]
 
         perturbed_x = mean + z * std
 

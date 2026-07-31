@@ -38,10 +38,10 @@ def test_geometric_schedule_meaningful_properties_and_api():
     )
 
     # get_mean_stddev: mean must be the original x object; std matches stddev(t)
-    x = torch.randn(3, dtype=t.dtype)
+    x = torch.randn(t.shape[0], 3, dtype=t.dtype)
     mean, std_pair = obj.mean_stddev(x, t)
     assert mean is x
-    assert torch.allclose(std_pair, std)
+    assert torch.allclose(std_pair, std[:, None])
 
 
 def test_linear_schedule_meaningful_properties_and_api():
