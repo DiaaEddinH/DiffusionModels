@@ -18,6 +18,8 @@ class Schedule(ABC):
         Lower bound of the schedule parameter.
     arg_max : float
         Upper bound of the schedule parameter.
+    eps : float
+        Lower time bound of the schedule. Defaults to 1e-3.
 
 
     Notes
@@ -29,9 +31,10 @@ class Schedule(ABC):
     :doc:`diffusion`
     """
 
-    def __init__(self, arg_min: float, arg_max: float):
+    def __init__(self, arg_min: float, arg_max: float, eps: float = 1e-3):
         self.arg_min = arg_min
         self.arg_max = arg_max
+        self.eps = eps
 
     @abstractmethod
     def stddev(self, t: Tensor) -> Tensor:
@@ -86,10 +89,14 @@ class GeometricSchedule(Schedule):
         Lower bound of the schedule noise scale.
     sigma_max : float
         Upper bound of the schedule noise scale.
+    eps : float
+        Lower time bound of the schedule. Defaults to 1e-3.
     """
 
-    def __init__(self, sigma_min: float = 1.0, sigma_max: float = 10.0):
-        super().__init__(sigma_min, sigma_max)
+    def __init__(
+        self, sigma_min: float = 1.0, sigma_max: float = 10.0, eps: float = 1e-3
+    ):
+        super().__init__(sigma_min, sigma_max, eps)
 
     @property
     def _logsigma(self) -> float:
@@ -132,6 +139,7 @@ class GeometricSchedule(Schedule):
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         """
         Computes the mean and standard deviation of the perturbed data at time ``t``.
+        In the variance expanding scheme, the mean doesn't change so the input data `x` passes as is.
 
         :param x: Input data
         :type x: Tensor
@@ -143,23 +151,34 @@ class GeometricSchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return x, self.stddev(t)[:, *d]
 
-    """
-    Noise scheduler based on the geometric schedule used in NCSN, see `arXiv:1907.05600 <https://arxiv.org/abs/1907.05600>`_. 
-    Schedule has been adjusted for continuous time, see `arXiv:2011.13456 <https://arxiv.org/abs/2011.13456>`_. 
-    This schedule is intended for variance expanding (VE) diffusion processes. This process is defined by the following SDE
+    def build_uniform_variance_schedule(
+        self, num_steps: int, is_logspaced: bool = False
+    ) -> Tensor:
+        """
+        Builds a time schedule with uniform spacing in variance.
 
-    .. math::
+        :param num_steps: Number of steps in the schedule
+        :type num_steps: int
+        :param is_logspaced: Whether the variance spacing is uniform logarithmically. Defaults to False.
+        :type is_logspaced: bool
+        :return: A time schedule of size :param:`num_steps`
+        :rtype: Tensor
+        """
+        L = self._logsigma
+        s2_min = self.arg_min**2
 
-        \\rm dx_t = \\sigma_{\\min} \\left( \\frac{\\sigma_{\\max}}{\\sigma_{\\min}} \\right)^t dW_t
+        std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
 
+        # Variance schedule in decreasing order
+        if is_logspaced:
+            variance_schedule = torch.logspace(
+                std2_max.log10(), std2_min.log10(), steps=num_steps
+            )
+        else:
+            variance_schedule = torch.linspace(std2_max, std2_min, steps=num_steps)
 
-    Parameters
-    ----------
-    sigma_min : float
-        Lower bound of the schedule noise scale.
-    sigma_max : float
-        Upper bound of the schedule noise scale.
-    """
+        timesteps = torch.log1p(2 * L * variance_schedule / s2_min) / (2 * L)
+        return timesteps
 
 
 class LinearSchedule(Schedule):
@@ -179,10 +198,14 @@ class LinearSchedule(Schedule):
         Lower bound of the schedule noise scale.
     sigma_max : float
         Upper bound of the schedule noise scale.
+    eps : float
+        Lower time bound of the schedule. Defaults to 1e-3.
     """
 
-    def __init__(self, beta_min: float = 0.02, beta_max: float = 10.0):
-        super().__init__(beta_min, beta_max)
+    def __init__(
+        self, beta_min: float = 0.02, beta_max: float = 10.0, eps: float = 1e-3
+    ):
+        super().__init__(beta_min, beta_max, eps)
 
     @property
     def _delta(self) -> float:
@@ -250,3 +273,33 @@ class LinearSchedule(Schedule):
         """
         d = (x.dim() - 1) * (None,)
         return self.mean_factor(t)[:, *d] * x, self.stddev(t)[:, *d]
+
+    def build_uniform_variance_schedule(
+        self, num_steps: int, is_logspaced: bool = False
+    ) -> Tensor:
+        """
+        Builds a time schedule with uniform spacing in variance.
+
+        :param num_steps: Number of steps in the schedule
+        :type num_steps: int
+        :param is_logspaced: Whether the variance spacing is uniform logarithmically. Defaults to False.
+        :type is_logspaced: bool
+        :return: A time schedule of size :param:`num_steps`
+        :rtype: Tensor
+        """
+        delta = self._delta
+        arg_min = self.arg_min
+
+        std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
+
+        # Variance schedule in decreasing order
+        if is_logspaced:
+            variance_schedule = torch.logspace(
+                std2_max.log10(), std2_min.log10(), steps=num_steps
+            )
+        else:
+            variance_schedule = torch.linspace(std2_max, std2_min, steps=num_steps)
+
+        log1m_variance = torch.log(1 - variance_schedule).abs()
+        timesteps = (arg_min / delta) * (-1 + torch.sqrt(1 + 2 * delta * log1m_variance / arg_min**2))
+        return timesteps

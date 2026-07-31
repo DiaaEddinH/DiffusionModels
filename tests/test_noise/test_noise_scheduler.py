@@ -6,6 +6,8 @@ from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSche
 def test_geometric_schedule_meaningful_properties_and_api():
     sigma_min = 0.05
     sigma_max = 5.0
+    num_steps = 11
+
     obj = GeometricSchedule(sigma_min=sigma_min, sigma_max=sigma_max)
 
     # Use float64 to make dtype propagation obvious
@@ -43,10 +45,18 @@ def test_geometric_schedule_meaningful_properties_and_api():
     assert mean is x
     assert torch.allclose(std_pair, std[:, None])
 
+    # build_uniform_variance_schedule
+    time_schedule = obj.build_uniform_variance_schedule(num_steps=num_steps)
+    assert time_schedule.shape[0] == num_steps
+    assert torch.all(time_schedule[1:] < time_schedule[:-1])
+
+
+
 
 def test_linear_schedule_meaningful_properties_and_api():
     beta_min = 0.1
     beta_max = 1.1
+    num_steps = 11
 
     obj = LinearSchedule(beta_min=beta_min, beta_max=beta_max)
 
@@ -89,3 +99,8 @@ def test_linear_schedule_meaningful_properties_and_api():
     mean, std_pair = obj.mean_stddev(x, t)
     assert torch.allclose(mean, x * expected_m[:, None, None], rtol=0.0, atol=0.0)
     assert torch.allclose(std_pair, std[:, None, None], rtol=0.0, atol=0.0)
+
+    # build_uniform_variance_schedule
+    time_schedule = obj.build_uniform_variance_schedule(num_steps=num_steps)
+    assert time_schedule.shape[0] == num_steps
+    assert torch.all(time_schedule[1:] < time_schedule[:-1])
