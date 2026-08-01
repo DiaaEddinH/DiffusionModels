@@ -192,7 +192,7 @@ def test_energy_based_model_forward_create_graph_flag():
     assert g.shape == x.shape
     s = g.sum()
     # backprop through the created graph to ensure it's retained
-    s.backward(create_graph=True)
+    grad = torch.autograd.grad(outputs=s, inputs=x, create_graph=True)
 
 
 def test_flow_matching_model_end_to_end(tmp_path):
