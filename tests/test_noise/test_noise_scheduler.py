@@ -50,6 +50,13 @@ def test_geometric_schedule_meaningful_properties_and_api():
     assert time_schedule.shape[0] == num_steps
     assert torch.all(time_schedule[1:] < time_schedule[:-1])
 
+    # drift_term: needs to be identically zero with same shape/device as input x
+    drift = obj.drift_term(x, t)
+    excepted_drift = torch.zeros_like(x)
+    assert torch.allclose(drift, torch.zeros_like(x), rtol=1e-10, atol=1e-8)
+    assert drift.shape == x.shape
+    assert drift.dtype == x.dtype
+    assert drift.device == x.device
 
 
 
@@ -104,3 +111,10 @@ def test_linear_schedule_meaningful_properties_and_api():
     time_schedule = obj.build_uniform_variance_schedule(num_steps=num_steps)
     assert time_schedule.shape[0] == num_steps
     assert torch.all(time_schedule[1:] < time_schedule[:-1])
+
+    # drift_term: needs to be identically zero with same shape/device as input x
+    drift = obj.drift_term(x, t)
+    excepted_drift = -0.5 * schedule[:, None, None] * x
+    assert torch.allclose(drift, excepted_drift, rtol=1e-7, atol=1e-8)
+    assert drift.dtype == x.dtype
+    assert drift.device == x.device

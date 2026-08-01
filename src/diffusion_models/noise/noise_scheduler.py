@@ -12,6 +12,8 @@ class Schedule(ABC):
     The noise schedule defines how the noise level changes over time and
     determines the corresponding coefficients of the PDE.
 
+    The backward diffusion process proceeds from :math:`t=1` to :math:`t=\\varepsilon`.
+
     Parameters
     ----------
     arg_min : float
@@ -24,7 +26,7 @@ class Schedule(ABC):
 
     Notes
     -----
-    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff` and :meth:`mean_stddev`.
+    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff`, :meth:`drift_term` and :meth:`mean_stddev`.
 
     See also
     --------
@@ -57,6 +59,20 @@ class Schedule(ABC):
         :return: Diffusion coefficient corresponding to each value ``t``.
         :rtype: Tensor
         """
+
+    @abstractmethod
+    def drift_term(self, x: Tensor, t: Tensor) -> Tensor:
+        """
+        Computes the drift term of the diffusion process at time ``t``.
+
+
+        :param x: Input state/data
+        :type x: Tensor
+        :param t: Time values at which to evaluate.
+        :type t: Tensor
+        :return: Drift term corresponding to each pair ``(x, t)``.
+        :rtype: Tensor
+        """        
 
     @abstractmethod
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
@@ -135,6 +151,20 @@ class GeometricSchedule(Schedule):
         :rtype: Tensor
         """
         return self.arg_min * torch.exp(t * self._logsigma)
+
+    def drift_term(self, x: Tensor, t: Tensor) -> Tensor:
+        """
+        Computes the drift term of the diffusion process at time ``t``.
+        In the VE scheme it is identically zero.
+
+        :param x: Input state/data
+        :type x: Tensor
+        :param t: Time values at which to evaluate.
+        :type t: Tensor
+        :return: Identically zero vector field with ``x``'s shape.
+        :rtype: Tensor
+        """ 
+        return torch.zeros_like(x)
 
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         """
@@ -259,6 +289,20 @@ class LinearSchedule(Schedule):
         :rtype: Tensor
         """
         return torch.sqrt(self.beta_schedule(t))
+    
+    def drift_term(self, x: Tensor, t: Tensor) -> Tensor:
+        """
+        Computes the drift term of the diffusion process at time ``t``.
+
+        :param x: Input state/data
+        :type x: Tensor
+        :param t: Time values at which to evaluate.
+        :type t: Tensor
+        :return: Drift term corresponding to each pair ``(x, t)``.
+        :rtype: Tensor
+        """
+        d = (x.dim() - 1) * (None,)
+        return -0.5 * self.beta_schedule(t)[:, *d] * x
 
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         """

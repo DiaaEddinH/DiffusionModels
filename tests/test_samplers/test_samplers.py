@@ -19,6 +19,9 @@ class DummySchedule(Schedule):
         self.diffusion_ts = t.detach().clone()
         return torch.full_like(t, self._diff)
 
+    def drift_term(self, x, t):
+        return torch.zeros_like(x)
+
     def stddev(self, t: torch.Tensor):
         # constant stddev, shape follows input t
         return torch.full_like(t, self._std)
