@@ -26,7 +26,7 @@ class Schedule(ABC):
 
     Notes
     -----
-    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff`, :meth:`drift_term` and :meth:`mean_stddev`.
+    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff`, :meth:`drift_term`, :meth:`mean_stddev` and :meth:`_invert_variance_to_time`.
 
     See also
     --------
@@ -65,14 +65,13 @@ class Schedule(ABC):
         """
         Computes the drift term of the diffusion process at time ``t``.
 
-
         :param x: Input state/data
         :type x: Tensor
         :param t: Time values at which to evaluate.
         :type t: Tensor
         :return: Drift term corresponding to each pair ``(x, t)``.
         :rtype: Tensor
-        """        
+        """
 
     @abstractmethod
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
@@ -86,6 +85,58 @@ class Schedule(ABC):
         :return: A tuple ``(mean, stddev)`` of the perturbed data.
         :rtype: tuple[Tensor, Tensor]
         """
+
+    @abstractmethod
+    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
+        """
+        Maps a variance schedule to a time step schedule.
+
+        :param variance_schedule: The variance schedule. Should be monotonically decreasing.
+        :type variance_schedule: Tensor
+        :return: A monotonically decreasing timestep schedule.
+        :rtype: Tensor
+        """
+
+    def build_variance_schedule(
+        self, num_steps: int, schedule_type: str = "uniform", rho: float = 1
+    ) -> Tensor:
+        """
+        Builds a time schedule with uniform spacing in variance.
+
+        :param num_steps: Number of steps in the schedule
+        :type num_steps: int
+        :param schedule_type: Type of variance schedule to build from. Must be one of {`uniform`, `log`, `karras`}. `uniform` for uniform variance spacing and `log` for logarithmically uniform spacing.
+        For `karras`, implements variance schedule according to `arXiv:2206.00364 <https://arxiv.org/pdf/2206.00364>`_. Defaults to "uniform"
+        :type schedule_type: str, optional
+        :param rho: Parameter which controls step size across noise levels if the `karras` schedule has been specified. Large `rho` corresponds to bigger step sizes at large noise levels. Defaults to 1.0
+        :type rho: float, optional
+        :return: A time schedule of size :param:`num_steps`
+        :rtype: Tensor
+        """
+        assert schedule_type in ["uniform", "log", "karras"]
+
+        # Variance schedule in decreasing order
+        if schedule_type == "log":
+            std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
+            variance_schedule = torch.logspace(
+                std2_max.log10(), std2_min.log10(), steps=num_steps
+            )
+        elif schedule_type == "uniform":
+            std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
+            variance_schedule = torch.linspace(std2_max, std2_min, steps=num_steps)
+        elif schedule_type == "karras":
+            std_max, std_min = self.stddev(torch.tensor([1, self.eps]))
+            i_range = torch.arange(num_steps, dtype=std_min.dtype)
+            inv_rho = 1.0 / rho
+            variance_schedule = (
+                std_max.pow(inv_rho)
+                + i_range
+                / (num_steps - 1)
+                * (std_min.pow(inv_rho) - std_max.pow(inv_rho))
+            ).pow(2 * rho)
+
+        timesteps = self._invert_variance_to_time(variance_schedule)
+        return timesteps
 
 
 class GeometricSchedule(Schedule):
@@ -163,7 +214,7 @@ class GeometricSchedule(Schedule):
         :type t: Tensor
         :return: Identically zero vector field with ``x``'s shape.
         :rtype: Tensor
-        """ 
+        """
         return torch.zeros_like(x)
 
     def mean_stddev(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
@@ -181,34 +232,18 @@ class GeometricSchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return x, self.stddev(t)[:, *d]
 
-    def build_uniform_variance_schedule(
-        self, num_steps: int, is_logspaced: bool = False
-    ) -> Tensor:
+    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
         """
-        Builds a time schedule with uniform spacing in variance.
+        Maps a variance schedule to a time step schedule.
 
-        :param num_steps: Number of steps in the schedule
-        :type num_steps: int
-        :param is_logspaced: Whether the variance spacing is uniform logarithmically. Defaults to False.
-        :type is_logspaced: bool
-        :return: A time schedule of size :param:`num_steps`
+        :param variance_schedule: The variance schedule. Should be monotonically decreasing.
+        :type variance_schedule: Tensor
+        :return: A monotonically decreasing timestep schedule.
         :rtype: Tensor
         """
         L = self._logsigma
         s2_min = self.arg_min**2
-
-        std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
-
-        # Variance schedule in decreasing order
-        if is_logspaced:
-            variance_schedule = torch.logspace(
-                std2_max.log10(), std2_min.log10(), steps=num_steps
-            )
-        else:
-            variance_schedule = torch.linspace(std2_max, std2_min, steps=num_steps)
-
-        timesteps = torch.log1p(2 * L * variance_schedule / s2_min) / (2 * L)
-        return timesteps
+        return torch.log1p(2 * L * variance_schedule / s2_min) / (2 * L)
 
 
 class LinearSchedule(Schedule):
@@ -289,7 +324,7 @@ class LinearSchedule(Schedule):
         :rtype: Tensor
         """
         return torch.sqrt(self.beta_schedule(t))
-    
+
     def drift_term(self, x: Tensor, t: Tensor) -> Tensor:
         """
         Computes the drift term of the diffusion process at time ``t``.
@@ -318,32 +353,19 @@ class LinearSchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return self.mean_factor(t)[:, *d] * x, self.stddev(t)[:, *d]
 
-    def build_uniform_variance_schedule(
-        self, num_steps: int, is_logspaced: bool = False
-    ) -> Tensor:
+    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
         """
-        Builds a time schedule with uniform spacing in variance.
+        Maps a variance schedule to a time step schedule.
 
-        :param num_steps: Number of steps in the schedule
-        :type num_steps: int
-        :param is_logspaced: Whether the variance spacing is uniform logarithmically. Defaults to False.
-        :type is_logspaced: bool
-        :return: A time schedule of size :param:`num_steps`
+        :param variance_schedule: The variance schedule. Should be monotonically decreasing.
+        :type variance_schedule: Tensor
+        :return: A monotonically decreasing timestep schedule.
         :rtype: Tensor
         """
         delta = self._delta
         arg_min = self.arg_min
-
-        std2_max, std2_min = self.stddev(torch.tensor([1, self.eps])) ** 2
-
-        # Variance schedule in decreasing order
-        if is_logspaced:
-            variance_schedule = torch.logspace(
-                std2_max.log10(), std2_min.log10(), steps=num_steps
-            )
-        else:
-            variance_schedule = torch.linspace(std2_max, std2_min, steps=num_steps)
-
         log1m_variance = torch.log(1 - variance_schedule).abs()
-        timesteps = (arg_min / delta) * (-1 + torch.sqrt(1 + 2 * delta * log1m_variance / arg_min**2))
-        return timesteps
+
+        return (arg_min / delta) * (
+            -1 + torch.sqrt(1 + 2 * delta * log1m_variance / arg_min**2)
+        )

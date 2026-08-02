@@ -46,7 +46,7 @@ def test_geometric_schedule_meaningful_properties_and_api():
     assert torch.allclose(std_pair, std[:, None])
 
     # build_uniform_variance_schedule
-    time_schedule = obj.build_uniform_variance_schedule(num_steps=num_steps)
+    time_schedule = obj.build_variance_schedule(num_steps=num_steps)
     assert time_schedule.shape[0] == num_steps
     assert torch.all(time_schedule[1:] < time_schedule[:-1])
 
@@ -108,7 +108,7 @@ def test_linear_schedule_meaningful_properties_and_api():
     assert torch.allclose(std_pair, std[:, None, None], rtol=0.0, atol=0.0)
 
     # build_uniform_variance_schedule
-    time_schedule = obj.build_uniform_variance_schedule(num_steps=num_steps)
+    time_schedule = obj.build_variance_schedule(num_steps=num_steps)
     assert time_schedule.shape[0] == num_steps
     assert torch.all(time_schedule[1:] < time_schedule[:-1])
 

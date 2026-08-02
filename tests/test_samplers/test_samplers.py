@@ -31,6 +31,9 @@ class DummySchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return x, self.stddev(t)[:, *d]
 
+    def _invert_variance_to_time(self, variance_schedule):
+        return variance_schedule
+
 
 class DummyModel(torch.nn.Module):
     def __init__(self, schedule: Schedule, device="cpu"):
