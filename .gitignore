@@ -8,6 +8,7 @@ __pycache__
 configs/*.yaml
 !example_config.yaml
 !CI_tests.yaml
+!documentation.yaml
 !configs/example_config.yaml
 
 # Ignore Jupyter Notebook checkpoints
