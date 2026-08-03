@@ -1,6 +1,13 @@
 # Schedule
 
+
 ```{eval-rst}
+.. autosummary::
+    diffusion_models.noise.noise_scheduler.Schedule
+    diffusion_models.noise.noise_scheduler.GeometricSchedule
+    diffusion_models.noise.noise_scheduler.LinearSchedule
+
+
 .. autoclass:: diffusion_models.noise.noise_scheduler.Schedule
 	:members:
 

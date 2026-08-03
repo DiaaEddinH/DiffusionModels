@@ -17,9 +17,9 @@ release = '0.1.0'
 extensions = [
 	"myst_parser",
 	"sphinx.ext.autodoc",
+	"sphinx.ext.autosummary",
 	"sphinx.ext.napoleon",
 	"sphinx.ext.mathjax",
-
 ]
 
 templates_path = ['_templates']
@@ -32,4 +32,5 @@ source_suffix = {'.rst' : 'restructuredtext', '.md' : 'markdown'}
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
-html_static_path = []
+html_static_path = ["_static"]
+html_css_files =["custom.css"]

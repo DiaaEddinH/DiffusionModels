@@ -4,6 +4,6 @@
 :maxdepth: 2
 :caption: Contents:
 
-diffusion
-schedule
+theory/diffusion
+api/schedule
 

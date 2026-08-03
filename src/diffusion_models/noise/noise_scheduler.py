@@ -30,7 +30,7 @@ class Schedule(ABC):
 
     See also
     --------
-    :doc:`diffusion`
+    :doc:`../theory/diffusion`
     """
 
     def __init__(self, arg_min: float, arg_max: float, eps: float = 1e-3):
