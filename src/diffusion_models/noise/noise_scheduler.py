@@ -105,12 +105,11 @@ class Schedule(ABC):
 
         :param num_steps: Number of steps in the schedule
         :type num_steps: int
-        :param schedule_type: Type of variance schedule to build from. Must be one of {`uniform`, `log`, `karras`}. `uniform` for uniform variance spacing and `log` for logarithmically uniform spacing.
-        For `karras`, implements variance schedule according to `arXiv:2206.00364 <https://arxiv.org/pdf/2206.00364>`_. Defaults to "uniform"
+        :param schedule_type: Type of variance schedule to build from. Must be one of {`uniform`, `log`, `karras`}. Choose `uniform` for uniform variance spacing, `log` for logarithmically uniform spacing and `karras` to implement a variance schedule according to `arXiv:2206.00364 <https://arxiv.org/pdf/2206.00364>`_. Defaults to `uniform`.
         :type schedule_type: str, optional
         :param rho: Parameter which controls step size across noise levels if the `karras` schedule has been specified. Large `rho` corresponds to bigger step sizes at large noise levels. Defaults to 1.0
         :type rho: float, optional
-        :return: A time schedule of size :param:`num_steps`
+        :return: A time schedule of size `num_steps`
         :rtype: Tensor
         """
         assert schedule_type in ["uniform", "log", "karras"]
