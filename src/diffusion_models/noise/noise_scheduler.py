@@ -26,7 +26,7 @@ class Schedule(ABC):
 
     Notes
     -----
-    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff`, :meth:`drift_term`, :meth:`mean_stddev` and :meth:`_invert_variance_to_time`.
+    Subclasses must implement :meth:`stddev`, :meth:`diffusion_coeff`, :meth:`drift_term`, :meth:`mean_stddev` and :meth:`invert_variance_to_time`.
 
     See also
     --------
@@ -87,7 +87,7 @@ class Schedule(ABC):
         """
 
     @abstractmethod
-    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
+    def invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
         """
         Maps a variance schedule to a time step schedule.
 
@@ -134,7 +134,7 @@ class Schedule(ABC):
                 * (std_min.pow(inv_rho) - std_max.pow(inv_rho))
             ).pow(2 * rho)
 
-        timesteps = self._invert_variance_to_time(variance_schedule)
+        timesteps = self.invert_variance_to_time(variance_schedule)
         return timesteps
 
 
@@ -231,7 +231,7 @@ class GeometricSchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return x, self.stddev(t)[:, *d]
 
-    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
+    def invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
         """
         Maps a variance schedule to a time step schedule.
 
@@ -352,7 +352,7 @@ class LinearSchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return self.mean_factor(t)[:, *d] * x, self.stddev(t)[:, *d]
 
-    def _invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
+    def invert_variance_to_time(self, variance_schedule: Tensor) -> Tensor:
         """
         Maps a variance schedule to a time step schedule.
 

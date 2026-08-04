@@ -27,7 +27,7 @@ class BaseSampler(ABC):
         Score model used during reverse-time integration.
     device: torch.device
         Device on which sampling is performed.
-    schedule : :class:`Schedule`
+    schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
         Noise schedule of the diffusion process.
     eps : float
         Lower time bound of the reverse process.
@@ -134,7 +134,7 @@ class EulerMaruyamaSampler(BaseSampler):
         Score model used during reverse-time integration.
     device: torch.device
         Device on which sampling is performed.
-    schedule : :class:`Schedule`
+    schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
         Noise schedule of the diffusion process.
     """
 
@@ -228,7 +228,7 @@ class EulerMaruyamaSampler(BaseSampler):
         self, num_steps: int, schedule_type: str = "uniform", rho: float = 1.0
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """
-        Builds integration schedule. Uses the :class:`Schedule`'s :meth:`build_variance_schedule` method.
+        Builds integration schedule. Uses the :class:`~diffusion_models.noise.noise_scheduler.Schedule`'s :meth:`build_variance_schedule` method.
 
         :param num_steps: Number of steps in the schedule
         :type num_steps: int

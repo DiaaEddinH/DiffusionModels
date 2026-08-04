@@ -28,7 +28,7 @@ class DummySchedule(Schedule):
         d = (x.dim() - 1) * (None,)
         return x * torch.exp(-t), self.stddev(t)[:, *d]
 
-    def _invert_variance_to_time(self, variance_schedule):
+    def invert_variance_to_time(self, variance_schedule):
         return variance_schedule.clamp(min=0).sqrt() / self._std_scale
 
 

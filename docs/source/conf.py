@@ -18,12 +18,14 @@ extensions = [
 	"myst_parser",
 	"sphinx.ext.autodoc",
 	"sphinx.ext.autosummary",
+    "sphinx.ext.intersphinx",
 	"sphinx.ext.napoleon",
 	"sphinx.ext.mathjax",
+    "sphinx_autodoc_typehints"
 ]
 
 templates_path = ['_templates']
-exclude_patterns = []
+exclude_patterns = [".DS_Store", ".env", ".venv", "Thumbs.db",]
 source_suffix = {'.rst' : 'restructuredtext', '.md' : 'markdown'}
 
 

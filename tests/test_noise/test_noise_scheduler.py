@@ -111,7 +111,7 @@ class TestGeometricSchedule:
     def test_invert_variance_to_time_roundtrip(self, geo_schedule):
         t_original = torch.linspace(0.01, 1.0, steps=25)
         variance = geo_schedule.stddev(t_original) ** 2
-        t_recovered = geo_schedule._invert_variance_to_time(variance)
+        t_recovered = geo_schedule.invert_variance_to_time(variance)
         assert torch.allclose(t_recovered, t_original, atol=1e-4)
 
 # ---------------------------------------------------------------------------
@@ -172,5 +172,5 @@ class TestLinearSchedule:
     def test_invert_variance_to_time_roundtrip(self, linear_schedule):
         t_original = torch.linspace(0.01, 1.0, steps=25)
         variance = linear_schedule.stddev(t_original) ** 2
-        t_recovered = linear_schedule._invert_variance_to_time(variance)
+        t_recovered = linear_schedule.invert_variance_to_time(variance)
         assert torch.allclose(t_recovered, t_original, atol=1e-4)
