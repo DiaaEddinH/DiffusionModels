@@ -3,6 +3,8 @@
 
 ```{eval-rst}
 .. autosummary::
+    :nosignatures:
+
     diffusion_models.sampling.samplers.BaseSampler
     diffusion_models.sampling.samplers.EulerMaruyamaSampler
 
