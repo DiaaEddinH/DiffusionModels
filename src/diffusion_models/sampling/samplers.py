@@ -200,7 +200,7 @@ class EulerMaruyamaSampler(BaseSampler):
         :type schedule_type: str, optional
         :param rho: Parameter which controls step size across noise levels if the `karras` schedule has been specified. Defaults to 1.0
         :type rho: float, optional
-        :return: Samples of the final distribution. If :param:`keep_history`, returns a trajectory of
+        :return: Samples of the final distribution. If `keep_history=True`, returns the trajectory history
         :rtype: Tensor
         """
         timesteps, g2_t, step_size, step_size_sqrt = self.build_schedule(

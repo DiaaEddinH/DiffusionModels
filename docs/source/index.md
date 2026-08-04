@@ -6,4 +6,5 @@
 
 theory/diffusion
 api/schedule
+api/samplers
 
