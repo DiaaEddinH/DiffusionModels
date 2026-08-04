@@ -46,7 +46,7 @@ jobs:
             - name: Install doc dependencies
               shell: bash -l {0}
               run: |
-                pip install sphinx sphinx_rtd_theme myst_parser
+                pip install sphinx sphinx_rtd_theme myst_parser sphinx-autodoc-typehints
 
             - name: Install project (editable) if present
               shell: bash -l {0}
