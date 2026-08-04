@@ -40,3 +40,6 @@ clean_environment.sh
 # Poetry local config file
 poetry.toml
 
+# Coverage files
+.coverage
+htmlcov/
