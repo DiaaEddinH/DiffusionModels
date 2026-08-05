@@ -9,6 +9,7 @@ from pathlib import Path
 from diffusion_models.config.config_loader import parse_configs, add_args_from_config
 
 
+
 class TestConfigLoader(unittest.TestCase):
     def setUp(self):
         self._argv_backup = list(sys.argv)
