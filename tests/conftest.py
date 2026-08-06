@@ -41,7 +41,7 @@ class DummySchedule(Schedule):
     def mean_stddev(self, x: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # identically return input `x`
         d = (x.dim() - 1) * (None,)
-        return x * torch.exp(-t), self.stddev(t)[:, *d]
+        return x * torch.exp(-t)[:, *d], self.stddev(t)[:, *d]
 
     def invert_variance_to_time(self, variance_schedule):
         return variance_schedule.clamp(min=0).sqrt() / self._std_scale
@@ -72,7 +72,7 @@ class DummyModel(torch.nn.Module):
         return self.output_scale * x
 
 
-class DummyScoreNetwork(torch.nn.Module):
+class DummyNetwork(torch.nn.Module):
     """
     Small trainable network for testing ScoreModel end-to-end. Has a
     single learnable parameter so EMA/train_step are doing something meaningful.
@@ -118,5 +118,5 @@ def dummy_model(dummy_schedule):
     return DummyModel(dummy_schedule)
 
 @pytest.fixture
-def dummy_score_network():
-    return DummyScoreNetwork(scale=0.3)
+def dummy_network():
+    return DummyNetwork(scale=0.3)

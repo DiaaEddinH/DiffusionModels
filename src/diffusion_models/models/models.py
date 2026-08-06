@@ -13,20 +13,20 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from typing import Any
 
-from diffusion_models.config.config import NETWORK_REGISTRY, SCHEDULE_REGISTRY, load_experiment_config
+from diffusion_models.config.config import NETWORK_REGISTRY, SCHEDULE_REGISTRY, ExperimentConfig
 
 
-class EMA:
+class ExponentialMovingAverage:
     """
-    This class handles the exponential moving average (EMA) of a network's parameters.
+    This class handles the exponential moving average of a network's parameters.
 
     :param model: Network whose parameters are tracked
     :type model: Module
-    :param decay: EMA decay rate. Closer to 1.0 means slower-changing averages.
-    :param decay: float
+    :param decay_rate: Exponential moving average decay rate. Closer to 1.0 means slower-changing averages.
+    :param decay_rate: float
     """    
-    def __init__(self, model: Module, decay: float = 0.999):
-        self.decay = decay
+    def __init__(self, model: Module, decay_rate: float = 0.999):
+        self.decay_rate = decay_rate
         self.model = model
         self.shadow: dict[str, Tensor] = {}
         self.backup: dict[str, Tensor] = {}
@@ -44,11 +44,11 @@ class EMA:
                 continue
 
             self.shadow[name] = (
-                (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
+                (1.0 - self.decay_rate) * param.data + self.decay_rate * self.shadow[name]
             ).clone()
 
     def apply_shadow(self):
-        """Backup the current parameters and swap-in the EMA weights."""
+        """Backup the current parameters and swap-in the ExponentialMovingAverage weights."""
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 self.backup[name] = param.data.clone()
@@ -64,11 +64,11 @@ class EMA:
     @contextmanager
     def average_parameters(self):
         """
-        Temporarily swap in EMA weights; will restore the original weights even if an exception is raised inside the block.
+        Temporarily swap in ExponentialMovingAverage weights; will restore the original weights even if an exception is raised inside the block.
 
         Usage::
 
-            with score_model.ema.average_parameters():
+            with score_model.exponential_moving_average.average_parameters():
                 ...
         """
         self.apply_shadow()
@@ -77,7 +77,7 @@ class EMA:
         finally:
             self.restore()
 
-    def to(self, *args, **kwargs) -> EMA:
+    def to(self, *args, **kwargs) -> ExponentialMovingAverage:
         """Move the tracked shadow/backup tensor (eg to a new device)."""
         self.shadow = {k: v.to(*args, **kwargs) for k, v in self.shadow.items()}
         self.backup = {k: v.to(*args, **kwargs) for k, v in self.shadow.items()}
@@ -92,7 +92,7 @@ class EMA:
 
 class ScoreModel(Module):
     """
-    Equips a network with a :class:`~diffusion_models.noise.noise_scheduler.Schedule` to form a trainable score model, with EMA weight tracking and checkpointing.
+    Equips a network with a :class:`~diffusion_models.noise.noise_scheduler.Schedule` to form a trainable score model, with exponential moving average weight tracking and checkpointing.
 
     :param network: Network used to model the score.
     :type network: Module
@@ -100,28 +100,26 @@ class ScoreModel(Module):
     :type schedule: Schedule
     :param device: Device to move the model to. Defaults to the network's device if not given.
     :type device: str | torch.device | None, optional
-    :param ema_decay: Decay rate for the EMA of the model's weights
-    :type ema_decay: float
+    :param decay_rate: Decay rate for the ExponentialMovingAverage of the model's weights
+    :type decay_rate: float
     """
     def __init__(
         self,
         network: Module,
         schedule: Schedule,
         device: str | torch.device | None = None,
-        ema_decay: float = 0.999,
+        decay_rate: float = 0.999,
         **kwargs: Any,
     ) -> None:
         super().__init__()
         self.network = network
         self.schedule = schedule
         self.history: list[float] = []
-        # self.dims: tuple[int, ...] | None = None
-        self.ema = EMA(self)
 
         if device is not None:
             self.to(device)
 
-        self.ema = EMA(self, decay=ema_decay)
+        self.exponential_moving_average = ExponentialMovingAverage(self, decay_rate=decay_rate)
 
         if kwargs:
             warnings.warn(
@@ -145,8 +143,8 @@ class ScoreModel(Module):
 
     def to(self, *args, **kwargs) -> ScoreModel:
         result = super().to(*args, **kwargs)
-        if hasattr(result, "ema"):
-            result.ema.to(*args, **kwargs)
+        if hasattr(result, "exponential_moving_average"):
+            result.exponential_moving_average.to(*args, **kwargs)
         return result
 
     def forward(self, x: Tensor, t: Tensor, *labels: Tensor | tuple[Tensor, ...]) -> Tensor:
@@ -173,7 +171,7 @@ class ScoreModel(Module):
         eps = self.schedule.eps
         z = torch.randn_like(batch)
 
-        random_t = torch.rand(batch.shape[0], device=self.device) * (1.0 - eps) + eps
+        random_t = torch.rand(batch.shape[0], device=self.device).clamp(min=eps)
         mean, std = self.schedule.mean_stddev(batch, random_t)
         perturbed_x = mean + z * std
 
@@ -182,7 +180,7 @@ class ScoreModel(Module):
 
     def train_step(self, batch: Tensor, optimizer: Optimizer, *labels: Tensor | tuple[Tensor, ...], lr_scheduler: LRScheduler | None = None) -> Tensor:
         """
-        Runs a signle optimization step and updates the EMA weights.
+        Runs a signle optimization step and updates the ExponentialMovingAverage weights.
 
         :param batch: Clea data batch.
         :type batch: Tensor
@@ -199,7 +197,7 @@ class ScoreModel(Module):
         loss = self.loss_fn(batch, *labels)
         loss.backward()
         optimizer.step()
-        self.ema.update()
+        self.exponential_moving_average.update()
 
         if lr_scheduler is not None:
             lr_scheduler.step()
@@ -217,7 +215,7 @@ class ScoreModel(Module):
         save_dict = torch.load(file_path, map_location=self.device, weights_only=True)
         self.load_state_dict(save_dict["MODEL_STATE"])
         self.history = save_dict.get("HISTORY", [])
-        self.ema.load_state_dict(save_dict.get("EMA", {}))
+        self.exponential_moving_average.load_state_dict(save_dict.get("EMA", {}))
 
     def _save_weights(self, file_path: str | Path):
         """
@@ -230,14 +228,14 @@ class ScoreModel(Module):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         save_dict = {
             "MODEL_STATE": self.state_dict(),
-            "EMA": self.ema.state_dict(),
+            "EMA": self.exponential_moving_average.state_dict(),
             "HISTORY": self.history,
         }
         torch.save(save_dict, file_path)
         print(f"Weights saved at {file_path}...")
 
     @classmethod
-    def _from_yaml(cls, yaml_path: str | Path, device: str | torch.device | None = None,) -> ScoreModel:
+    def from_yaml(cls, yaml_path: str | Path, device: str | torch.device | None = None,) -> ScoreModel:
         """
         Build a ScoreModel instance from a YAML config file. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
         Such classes need to be registered before this constructor is called, otherwise they won't be recognized.
@@ -251,7 +249,7 @@ class ScoreModel(Module):
         :rtype: ScoreModel
         """
         yaml_path = Path(yaml_path)
-        config = load_experiment_config(yaml_path)
+        config = ExperimentConfig.from_yaml(yaml_path)
 
         network = NETWORK_REGISTRY.build(config.network.name, config.network.params)
         schedule = SCHEDULE_REGISTRY.build(config.schedule.name, config.schedule.params)
@@ -261,7 +259,7 @@ class ScoreModel(Module):
             network=network,
             schedule=schedule,
             device=resolved_device,
-            ema_decay=config.model.ema_decay,
+            decay_rate=config.model.decay_rate,
         )
         model.config = config
         model.config_path = str(yaml_path)
@@ -323,7 +321,7 @@ class FlowMatchingModel(Module):
         self.device = device
         self.history = []
         self.dims = None
-        self.ema = EMA(self)
+        self.exponential_moving_average = ExponentialMovingAverage(self)
 
     def forward(self, x: Tensor, t: Tensor, *labels):
         """
@@ -379,12 +377,12 @@ class FlowMatchingModel(Module):
         save_dict = torch.load(file_path, map_location=self.device, weights_only=True)
         self.load_state_dict(save_dict["MODEL_STATE"])
         self.history = save_dict.get("HISTORY", [])
-        self.ema.shadow = save_dict.get("EMA", {})
+        self.exponential_moving_average.shadow = save_dict.get("EMA", {})
 
     def _save_weights(self, file_path):
         save_dict = {
             "MODEL_STATE": self.state_dict(),
-            "EMA": self.ema.shadow,
+            "EMA": self.exponential_moving_average.shadow,
             "HISTORY": self.history,
         }
         torch.save(save_dict, file_path)
