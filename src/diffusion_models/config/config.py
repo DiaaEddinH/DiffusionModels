@@ -106,15 +106,8 @@ class YAMLConfig(ABC):
     yaml_dumper = getattr(yaml, "CDumper", yaml.Dumper)
     yaml_loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-    def _encoder(self, data: Any) -> str | bytes:
-        return yaml.dump(data, Dumper=self.yaml_dumper)
-
-    def _decoder(self, data: str | bytes) -> dict[str, Any]:
-        return yaml.load(data, Loader=self.yaml_loader)
-
     def to_dict(self) -> dict[str | Any]:
-        exclude = {f.name for f in fields(self) if f.metadata.get("yaml_exclude")}
-        return {k: v for k, v in asdict(self).items() if k not in exclude}
+        return asdict(self)
 
     def to_yaml(self, path: str | Path):
         with Path(path).open("w") as fp:
@@ -216,16 +209,6 @@ class ExperimentConfig(YAMLConfig):
         default_factory=lambda: ComponentConfig(name="adam", params={"lr": 2e-4})
     )
     lr_scheduler: ComponentConfig | None = None
-
-    raw: dict[str, Any] = field(
-        default_factory=dict, repr=False, compare=False, metadata={"yaml_exclude": True}
-    )
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ExperimentConfig:
-        obj = super().from_dict(data)
-        obj.raw = data
-        return obj
 
 
 # ------------------------------------------------------------------------
