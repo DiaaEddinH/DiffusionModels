@@ -5,4 +5,6 @@
 
 schedule
 samplers
+models
+config
 ```

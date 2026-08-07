@@ -238,7 +238,7 @@ class ScoreModel(Module):
     @classmethod
     def from_config(cls, config: ExperimentConfig, device: str | torch.device | None = None,) -> ScoreModel:
         """
-        Build a ScoreModel instance from a YAML config file. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
+        Build a ScoreModel instance from a parsed config `ExperimentConfig`. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
         Such classes need to be registered before this constructor is called, otherwise they won't be recognized.
 
 
