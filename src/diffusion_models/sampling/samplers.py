@@ -6,8 +6,8 @@ from torch import Tensor
 from abc import ABC, abstractmethod
 
 from math import pi
+from collections.abc import Callable
 from diffusion_models.models.models import ScoreModel
-from diffusion_models.noise.noise_scheduler import Schedule
 
 
 class BaseSampler(ABC):
@@ -381,6 +381,11 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
 class AngularMixin:
     """
     Mixin to introduce handling of angular data eg U(1), XY angles etc.
+
+    Must appear *before* the sampler class in the MRO, eg:: 
+
+        class AngularEMSampler(AngularMixin, EulerMaruyamaSampler):
+            pass
     """
 
     @staticmethod
@@ -429,6 +434,249 @@ class AngularMixin:
         """
         return self._wrap(super().update_step(x, drift, step_size, step_size_sqrt))
 
+
+class AngularEMSampler(AngularMixin, EulerMaruyamaSampler):
+    """
+    This class has equipped :class:`~diffusion_models.sampling.samplers.EulerMaruyamaSampler` for diffusion model sample generation of angular data, eg U(1), XY angles etc.
+
+    Parameters
+    ----------
+    model : :class:`ScoreModel`
+        Trained score model.
+
+    Attributes
+    ----------
+    model : :class:`ScoreModel`
+        Score model used during reverse-time integration.
+    device : torch.device
+        Device on which sampling is performed.
+    schedule : :class:`Schedule`
+        Noise schedule of the diffusion process.
+    """
+    pass
+
+
+class AngularStochasticHeunSampler(AngularMixin, StochasticHeunSampler):
+
+    """
+    This class has equipped :class:`~diffusion_models.sampling.samplers.StochasticHeunSampler` for diffusion model sample generation of angular data, eg U(1), XY angles etc.
+
+    Parameters
+    ----------
+    model : :class:`ScoreModel`
+        Trained score model.
+
+    Attributes
+    ----------
+    model : :class:`ScoreModel`
+        Score model used during reverse-time integration.
+    device : torch.device
+        Device on which sampling is performed.
+    schedule : :class:`Schedule`
+        Noise schedule of the diffusion process.
+    """
+    pass    
+
+
+class ScoreRescalingMixin:
+    """
+    Mixin that allows score rescaling of a raw model output by an arbitrary multiplicative factor.
+    Works by overriding :meth:`BaseSampler._score`.
+
+    Must appear *before* the sampler class in the MRO, eg:: 
+
+        class ScaledEuler(ScoreRescalingMixin, EulerMaruyamaSampler):
+            pass
+
+    Parameters
+    ----------
+    *args, **kwargs
+        Forwarded to the next class in the MRO
+    rescaling_factor: float, optional.
+        A constant scalar, defaults to 1.0
+
+    Note
+    ----
+    While an implementation with a ``t``-dependent factor is possible, it is not currently necessary.
+    """
+
+    def __init__(self, *args, rescaling_factor: float = 1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rescaling_factor = rescaling_factor
+
+    def _score(self, x: Tensor, t: Tensor, *args) -> Tensor:
+        return self.rescaling_factor * super()._score(x, t, *args)
+
+
+class AngularEMSamplerWRescaling(ScoreRescalingMixin, AngularEMSampler):
+    pass
+
+
+class AngularSHeunSamplerWRescaling(ScoreRescalingMixin, AngularStochasticHeunSampler):
+    pass
+
+
+class MAALASampler(EulerMaruyamaSampler):
+    """
+    This class implements a Metropolis-Adjusted Annealed Langevin sampler as described in Algorithm 2 of `J. High Energ. Phys. 2026, 111 (2026) <https://doi.org/10.1007/JHEP03(2026)111>`_.
+
+    Parameters
+    ----------
+    model : :class:`ScoreModel`
+        Trained score model.
+    action: Callable
+        The action or log-likelihood as a function of state.
+
+    Attributes
+    ----------
+    model : :class:`ScoreModel`
+        Score model used during reverse-time integration.
+    action : Callable
+        Log-likelihood function used in the Metropolis-Hastings accept/reject step.
+    device: torch.device
+        Device on which sampling is performed.
+    schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
+        Noise schedule of the diffusion process.
+    """
+    def __init__(self, model: ScoreModel, action: Callable):
+        super().__init__(model)
+        self.action = action
+
+    def mh_accept(self, initial: Tensor, proposal: Tensor, logq_diff: Tensor) -> Tensor:
+        """
+        Metropolis-Hastings accept/reject between ``initial`` and ``proposal``.
+
+        :param initial: Current state
+        :type initial: Tensor
+        :param proposal: Proposed state
+        :type proposal: Tensor
+        :param logq_diff: ``logq(initial|proposal) - logq(proposal|initial)``.
+        :type logq_diff: Tensor
+        :return: ``proposal`` where accepted, ``initial`` otherwise.
+        :rtype: Tensor
+        """
+        d = (initial.dim() - 1) * (None,)
+        log_accept = self.action(initial) - self.action(proposal) + logq_diff
+        u = torch.rand(initial.shape[0], device=self.device)
+        accept = u < torch.exp(log_accept)
+        return torch.where(accept[:, *d], proposal, initial)
+
+    def logq(
+        self,
+        initial: Tensor,
+        proposal: Tensor,
+        drift_initial: Tensor,
+        drift_proposal: Tensor,
+        step_size: Tensor | float,
+        dims: int | tuple[int, ...] = -1,
+    ) -> Tensor:
+        """
+        Log-ratio ``log q(initial|proposal) - log q(proposal|initial)`` of the Langevin proposal kernel for use in Metropolis-hastings correction.
+        It corrects the asymmetry in the forward and reverse proposals in the diffusion process.
+
+        :param initial: State before Langevin step
+        :type initial: Tensor
+        :param proposal: State after Langevin step
+        :type proposal: Tensor
+        :param drift_initial: Drift evaluated at ``initial``
+        :type drift_initial: Tensor
+        :param drift_proposal: Drift evaluated at ``proposal``
+        :type drift_proposal: Tensor
+        :param step_size: Langevin step size
+        :type step_size: Tensor | float
+        :param dims: Dimensions to sum the squared residual, defaults to -1
+        :type dims: int | tuple[int, ...], optional
+        :return: Log-ratio for the MH acceptance probability.
+        :rtype: Tensor
+        """
+        sigma2 = 2 * step_size
+        log_q_initial_given_proposal = (
+            -0.5
+            * torch.sum(
+                (initial - proposal - step_size * drift_proposal) ** 2, dim=dims
+            )
+            / sigma2
+        )
+        log_q_proposal_given_initial = (
+            -0.5
+            * torch.sum((proposal - initial - step_size * drift_initial) ** 2, dim=dims)
+            / sigma2
+        )
+        return log_q_initial_given_proposal - log_q_proposal_given_initial
+
+    def sample(
+        self,
+        shape: tuple,
+        num_steps: int,
+        l_steps: int,
+        l_stepsize: float,
+        mh_threshold: float = 0.95,
+        schedule_type: str = "uniform",
+        rho: float = 1.0,
+        keep_history: bool = False,
+        *labels,
+        **kwargs,
+    ) -> Tensor:
+        """
+        :param l_steps: Number of inner Langevin steps per annealing step.
+        :type l_steps: int
+        :param l_stepsize: Step size ``alpha`` used for the inner Langevin dynamics
+            (constant across the schedule, unlike the outer predictor step).
+        :type l_stepsize: float
+        :param mh_threshold: Fraction of the schedule (in ``[0,1]``) after which inner steps
+            switch from plain (unadjusted) Langevin to MH-corrected.
+        :type mh_threshold: float
+        :param schedule_type: See :meth:`build_schedule`.
+        :type schedule_type: str, optional
+        :param rho: See :meth:`build_schedule`.
+        :type rho: float, optional
+        """
+        timesteps, g2_t, step_size, step_size_sqrt = self.build_schedule(
+            num_steps, schedule_type, rho
+        )
+
+        x = self.init_sample(shape)
+        hist = self.init_history(num_steps, shape)
+        self.model.eval()
+
+        for i, t_i in enumerate(tqdm(timesteps)):
+            batch_t = t_i.expand(shape[0])
+
+            # Predictor --- One step at the schedule's noise level ---
+            drift = self._score(x, batch_t, *labels)
+            y = self.update_step(x, g2_t[i] * drift, step_size[i], step_size_sqrt[i])
+
+            # Corrector --- ``l_steps`` of Langevin dynamics ---
+            alpha = step_size[i]
+            alpha_sqrt = (2 * alpha).sqrt()
+
+            for _ in range(l_steps):
+                drift_initial = self._score(y, batch_t, *labels)
+                y_hat = self.update_step(y, g2_t[i] * drift_initial, alpha, alpha_sqrt)
+
+                if i >= mh_threshold * num_steps:
+                    drift_proposal = self._score(y_hat, batch_t, *labels)
+                    logq_diff = self.logq(
+                        y,
+                        y_hat,
+                        drift_initial,
+                        drift_proposal,
+                        alpha,
+                        dims=tuple(range(1, y.ndim)),
+                    )
+                    y = self.mh_accept(y, y_hat, logq_diff)
+                else:
+                    y = y_hat
+            x = y
+            self.record(hist, x, idx=i, flag=keep_history)
+
+        return self.collect(hist, x, flag=keep_history)
+
+class MAALASamplerWRescaling(ScoreRescalingMixin, MAALASampler):
+    pass
+
+class AngularMAALASamplerWRescaling(AngularMixin, MAALASamplerWRescaling):
+    pass
 
 
 @torch.no_grad()
