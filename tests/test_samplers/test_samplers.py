@@ -2,7 +2,7 @@ import torch
 
 import pytest
 
-from diffusion_models.noise.noise_scheduler import Schedule, GeometricSchedule, LinearSchedule
+from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSchedule
 from diffusion_models.sampling.samplers import ot_sampler
 from diffusion_models.sampling.samplers import BaseSampler, EulerMaruyamaSampler
 from tests.conftest import DummyModel, DummySchedule

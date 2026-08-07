@@ -1,21 +1,18 @@
 import torch
 import pytest
 
-from torch import nn, Tensor
-from torch.optim import SGD
-from torch.optim.lr_scheduler import StepLR
-
-from diffusion_models.noise.noise_scheduler import GeometricSchedule, LinearSchedule
-from diffusion_models.models.models import (
-    ExponentialMovingAverage,
-    ScoreModel,
-    EnergyBasedModel,
-    FlowMatchingModel,
-)
-
-from tests.conftest import DummyNetwork
 from torch.nn import Module, Parameter
-
+from diffusion_models.models.models import ScoreModel
+from tests.conftest import DummyNetwork, DummySchedule
+from diffusion_models.config.config import (
+    NETWORK_REGISTRY,
+    SCHEDULE_REGISTRY,
+    ExperimentConfig,
+    ComponentConfig,
+    ScoreModelConfig,
+    TrainerConfig,
+    RunConfig,
+)
 
 @pytest.fixture
 def score_model(dummy_network, dummy_schedule):
@@ -51,6 +48,9 @@ class TestConstruction:
     def test_explicit_device_moves_model(self, dummy_network, dummy_schedule):
         model = ScoreModel(network=dummy_network, schedule=dummy_schedule, device="cpu")
         assert model.device == torch.device("cpu")
+
+    def test_config_is_nont_until_from_config(self, score_model):
+        assert score_model.config is None
 
 # ----------------------------------------------------------------------
 # device property/to()
@@ -132,6 +132,51 @@ class TestLossFn:
         score_model.schedule.mean_stddev = spy
         score_model.loss_fn(torch.randn(4, 3))
         assert (captured["t"] >= 1e-5 - 1e-12).all()
+
+    def test_matches_mean(self, score_model, monkeypatch):
+        fixed_noise = torch.ones(4, 3)
+        monkeypatch.setattr(torch, "randn_like", lambda t: fixed_noise)
+        fixed_t = torch.full((4,), 0.5).clamp(min=score_model.schedule.eps)
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: fixed_t)
+
+        batch = torch.randn(4, 3)
+        loss = score_model.loss_fn(batch)
+
+        mean, std = score_model.schedule.mean_stddev(batch, fixed_t)
+        perturbed_x = mean + fixed_noise * std
+        score = score_model.forward(perturbed_x, fixed_t)
+
+        expected = 0.5 * torch.mean((score * std + fixed_noise)**2)
+
+        assert torch.allclose(loss, expected)
+
+    def test_random_t_uses_schedule_eps_as_floor(self, score_model, monkeypatch):
+        # Force torch.rand to return 0.0 for every element and confirm the
+        # sampled time is clamped up to schedule.eps, not left at 0.
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.zeros(*a))
+        captured = {}
+        orig_mean_stddev = score_model.schedule.mean_stddev
+ 
+        def spy(x, t):
+            captured["t"] = t.clone()
+            return orig_mean_stddev(x, t)
+ 
+        score_model.schedule.mean_stddev = spy
+        score_model.loss_fn(torch.randn(4, 3))
+        assert torch.allclose(captured["t"], torch.full_like(captured["t"], score_model.schedule.eps))
+ 
+    def test_random_t_never_exceeds_one(self, score_model, monkeypatch):
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.ones(*a) * 0.999)
+        captured = {}
+        orig_mean_stddev = score_model.schedule.mean_stddev
+ 
+        def spy(x, t):
+            captured["t"] = t.clone()
+            return orig_mean_stddev(x, t)
+ 
+        score_model.schedule.mean_stddev = spy
+        score_model.loss_fn(torch.randn(4, 3))
+        assert (captured["t"] <= 1.0).all()
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +272,119 @@ class TestCheckpointing:
         nested_path = tmp_path / "a" / "b" / "c" / "weights.pt"
         score_model._save_weights(nested_path)
         assert nested_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# from_config
+# ---------------------------------------------------------------------------
+ 
+class TestFromConfig:
+    @pytest.fixture(autouse=True)
+    def _register_test_components(self):
+        # Unique test-only names so this can't collide with
+        # real registrations elsewhere in the code.
+        NETWORK_REGISTRY.register("__test_dummy_network__")(DummyNetwork)
+        SCHEDULE_REGISTRY.register("__test_dummy_schedule__")(DummySchedule)
+        yield
+        NETWORK_REGISTRY.unregister("__test_dummy_network__")
+        SCHEDULE_REGISTRY.unregister("__test_dummy_schedule__")
+ 
+    @pytest.fixture
+    def experiment_config(self):
+        return ExperimentConfig(
+            network=ComponentConfig(name="__test_dummy_network__", params={"scale": 0.7}),
+            schedule=ComponentConfig(name="__test_dummy_schedule__", params={"std_scale": 2.0}),
+            trainer=TrainerConfig(file_path="test_run"),
+            run=RunConfig(N_epochs=1),
+            model=ScoreModelConfig(decay_rate=0.8, device="cpu"),
+        )
+
+    def test_builds_model_with_correct_components(self, experiment_config):
+        model = ScoreModel.from_config(experiment_config)
+        assert isinstance(model.network, DummyNetwork)
+        assert isinstance(model.schedule, DummySchedule)
+        assert model.network.scale.item() == pytest.approx(0.7)
+        assert model.schedule.stddev(torch.tensor([1.0])).item() == pytest.approx(2.0)
+
+    def test_applies_decay_rate_from_config(self, experiment_config):
+        model = ScoreModel.from_config(experiment_config)
+        assert model.exponential_moving_average.decay_rate == pytest.approx(0.8)
+ 
+    def test_device_override_takes_precedence_over_config(self, experiment_config):
+        model = ScoreModel.from_config(experiment_config, device="cpu")
+        assert model.device == torch.device("cpu")
+ 
+    def test_stores_config(self, experiment_config):
+        model = ScoreModel.from_config(experiment_config)
+        assert model.config is experiment_config
+ 
+    def test_unknown_network_name_raises(self, experiment_config):
+        experiment_config.network.name = "definitely_not_registered"
+        with pytest.raises(KeyError):
+            ScoreModel.from_config(experiment_config)
+
+
+
+class TestFromYaml:
+    @pytest.fixture(autouse=True)
+    def _register_test_components(self):
+        NETWORK_REGISTRY.register("__test_dummy_network__")(DummyNetwork)
+        SCHEDULE_REGISTRY.register("__test_dummy_schedule__")(DummySchedule)
+        yield
+        NETWORK_REGISTRY.unregister("__test_dummy_network__")
+        SCHEDULE_REGISTRY.unregister("__test_dummy_schedule__")
+ 
+    @pytest.fixture
+    def config_path(self, tmp_path):
+        content = """
+network:
+  name: __test_dummy_network__
+  params:
+    scale: 0.7
+ 
+schedule:
+  name: __test_dummy_schedule__
+  params:
+    std_scale: 2.0
+ 
+model:
+  decay_rate: 0.8
+  device: cpu
+ 
+trainer:
+  file_path: test_run
+ 
+run:
+  N_epochs: 1
+"""
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        return path
+ 
+    def test_matches_two_step_from_config_flow(self, config_path):
+        via_from_yaml = ScoreModel.from_yaml(config_path)
+        via_two_step = ScoreModel.from_config(ExperimentConfig.from_yaml(config_path))
+        
+        assert via_from_yaml.network.scale.item() == pytest.approx(via_two_step.network.scale.item())
+        assert via_from_yaml.exponential_moving_average.decay_rate == pytest.approx(
+            via_two_step.exponential_moving_average.decay_rate
+        )
+ 
+    def test_builds_model_with_correct_components(self, config_path):
+        model = ScoreModel.from_yaml(config_path)
+        assert isinstance(model.network, DummyNetwork)
+        assert isinstance(model.schedule, DummySchedule)
+        assert model.network.scale.item() == pytest.approx(0.7)
+ 
+    def test_device_override_takes_precedence_over_yaml(self, config_path):
+        model = ScoreModel.from_yaml(config_path, device="cpu")
+        assert model.device == torch.device("cpu")
+ 
+    def test_stores_config(self, config_path):
+        model = ScoreModel.from_yaml(config_path)
+        assert isinstance(model.config, ExperimentConfig)
+        assert model.config.network.name == "__test_dummy_network__"
+
 
 # class TinyNet(nn.Module):
 #     """A tiny network that is easy to reason about in tests.

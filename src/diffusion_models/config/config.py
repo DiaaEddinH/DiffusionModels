@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import yaml
 import torch
+import difflib
 
 from abc import ABC
 from pathlib import Path
-from types import UnionType
 from torch.nn import Module
+from types import UnionType
 from torch.optim import Optimizer
 from collections.abc import Callable
 from torch.optim.lr_scheduler import LRScheduler
@@ -50,6 +51,7 @@ class Registry:
             for name in names:
                 if name in self._entries:
                     raise ValueError(f"{self._kind} '{name}' is already registered")
+            for name in names:
                 self._entries[name] = cls
             return cls
 
@@ -65,7 +67,8 @@ class Registry:
 
     def unregister(self, name: str):
         """
-        Remove a registration. Mainly for testing purposes
+        Remove a registration. Mainly for testing isolation - register
+        a throwaway name in fxture, then unregister it in teardown.
 
         :param name: Name of registered object to be removed
         :type name: str
@@ -117,10 +120,11 @@ class YAMLConfig(ABC):
 
     @classmethod
     def from_dict(cls: type[T], data: dict[str | Any]) -> T:
-        valid = {f.name for f in fields(cls)}
-        unknown = set(data) - valid
-        if unknown:
-            raise ValueError(f"Unknown key(s) for {cls.__name__}: {sorted(unknown)}")
+        valid_field_names = {f.name: f for f in fields(cls)}
+        unknown_field_names = set(data.keys()) - valid_field_names.keys()
+        if unknown_field_names:
+            cls.suggest_correct_field_names(unknown_field_names, valid_field_names)
+            # raise ValueError(f"Unknown key(s) for {cls.__name__}: {sorted(unknown_field_names)}")
 
         hints = get_type_hints(cls)
         kwargs: dict[str, Any] = {}
@@ -153,6 +157,31 @@ class YAMLConfig(ABC):
                 return args[0]
         return _type
 
+    @classmethod
+    def suggest_correct_field_names(
+        cls, unknown_field_names: list[str], valid_field_names: list[str]
+    ):
+        suggestions = {}
+        for unknown_field_name in unknown_field_names:
+            close_field_names = difflib.get_close_matches(
+                unknown_field_name,
+                valid_field_names.keys(),
+            )
+            suggestions[unknown_field_name] = close_field_names
+
+        details = []
+        for field_name, close_field_names in suggestions.items():
+            if close_field_names:
+                details.append(
+                    f"  - {field_name!r} (did you mean: "
+                    f"{', '.join(repr(name) for name in close_field_names)})"
+                )
+            else:
+                details.append(f"  - {field_name!r}")
+
+        message = "Unknown field name(s):\n" + "\n".join(details)
+        raise ValueError(message)
+
 
 @dataclass
 class ComponentConfig(YAMLConfig):
@@ -171,7 +200,7 @@ class ScoreModelConfig(YAMLConfig):
     Maps directly onto ScoreModel.__init__'s keyword arguments.
     """
 
-    ema_decay: float = 0.999
+    decay_rate: float = 0.999
     device: str | torch.device | None = None
 
 
@@ -218,7 +247,7 @@ class ExperimentConfig(YAMLConfig):
 
 def build_optimizer(model: Module, config: ComponentConfig) -> Optimizer:
     cls = OPTIMIZER_REGISTRY.get(config.name)
-    return cls(model.parameters(), **config.name)
+    return cls(model.parameters(), **config.params)
 
 
 def build_lr_scheduler(

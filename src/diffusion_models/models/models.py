@@ -64,7 +64,7 @@ class ExponentialMovingAverage:
     @contextmanager
     def average_parameters(self):
         """
-        Temporarily swap in ExponentialMovingAverage weights; will restore the original weights even if an exception is raised inside the block.
+        Temporarily swap in ExponentialMovingAverage weights; restores the original weights even if an exception is raised inside the block.
 
         Usage::
 
@@ -80,7 +80,7 @@ class ExponentialMovingAverage:
     def to(self, *args, **kwargs) -> ExponentialMovingAverage:
         """Move the tracked shadow/backup tensor (eg to a new device)."""
         self.shadow = {k: v.to(*args, **kwargs) for k, v in self.shadow.items()}
-        self.backup = {k: v.to(*args, **kwargs) for k, v in self.shadow.items()}
+        self.backup = {k: v.to(*args, **kwargs) for k, v in self.backup.items()}
         return self
 
     def state_dict(self) -> dict[str, Tensor]:
@@ -92,7 +92,8 @@ class ExponentialMovingAverage:
 
 class ScoreModel(Module):
     """
-    Equips a network with a :class:`~diffusion_models.noise.noise_scheduler.Schedule` to form a trainable score model, with exponential moving average weight tracking and checkpointing.
+    Equips a network with a :class:`~diffusion_models.noise.noise_scheduler.Schedule` to form a trainable score model,
+    with exponential moving average weight tracking and checkpointing.
 
     :param network: Network used to model the score.
     :type network: Module
@@ -129,9 +130,9 @@ class ScoreModel(Module):
             )
         self.extra_kwargs = kwargs
 
-        # Populated by `_from_yaml`; kept so Trainer logs configs used during training
+        # Populated by `from_config`; kept so Trainer can log exactly what
+        # config was used to build this model.
         self.config: dict[str, Any] | None = None
-        self.config_path: str | None = None
 
     @property
     def device(self) -> torch.device:
@@ -180,7 +181,7 @@ class ScoreModel(Module):
 
     def train_step(self, batch: Tensor, optimizer: Optimizer, *labels: Tensor | tuple[Tensor, ...], lr_scheduler: LRScheduler | None = None) -> Tensor:
         """
-        Runs a signle optimization step and updates the ExponentialMovingAverage weights.
+        Runs a single optimization step and updates the ExponentialMovingAverage weights.
 
         :param batch: Clea data batch.
         :type batch: Tensor
@@ -235,22 +236,19 @@ class ScoreModel(Module):
         print(f"Weights saved at {file_path}...")
 
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path, device: str | torch.device | None = None,) -> ScoreModel:
+    def from_config(cls, config: ExperimentConfig, device: str | torch.device | None = None,) -> ScoreModel:
         """
         Build a ScoreModel instance from a YAML config file. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
         Such classes need to be registered before this constructor is called, otherwise they won't be recognized.
 
 
-        :param yaml_path: Path to the YAML config file.
-        :type yaml_path: str | Path
+        :param config: Parsed experiment config (see `ExperimentConfig.from_yaml`)
+        :type config: ExperimentConfig
         :param device: Overrides `model.device` in the YAML if given, defaults to None.
         :type device: str | torch.device | None, optional
         :return: A constructed ScoreModel.
         :rtype: ScoreModel
         """
-        yaml_path = Path(yaml_path)
-        config = ExperimentConfig.from_yaml(yaml_path)
-
         network = NETWORK_REGISTRY.build(config.network.name, config.network.params)
         schedule = SCHEDULE_REGISTRY.build(config.schedule.name, config.schedule.params)
         resolved_device = device if device is not None else config.model.device
@@ -262,8 +260,25 @@ class ScoreModel(Module):
             decay_rate=config.model.decay_rate,
         )
         model.config = config
-        model.config_path = str(yaml_path)
         return model
+
+    @classmethod
+    def from_yaml(cls, yaml_path: str | Path, device: str | torch.device | None = None,) -> ScoreModel:
+        """
+        Convenience wrapper: parses a YAML file into an ExperimentConfig and builds the model in one call. Equivalent to::
+
+            config = ExperimentConfig.from_yaml(yaml_path)
+            model = ScoreModel.from_config(config, device=device)
+
+        :param yaml_path: Path to the YAML config file.
+        :type yaml_path: str | Path
+        :param device: Overrides `model.device` in the YAML if given, defaults to None.
+        :type device: str | torch.device | None, optional
+        :return: A constructed ScoreModel.
+        :rtype: ScoreModel
+        """
+        config = ExperimentConfig.from_yaml(yaml_path)
+        return cls.from_config(config, device=device)
 
 
 class EnergyBasedModel(ScoreModel):
