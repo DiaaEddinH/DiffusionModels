@@ -1,23 +1,45 @@
-file: "example"
-ddp: true
-device: gpu
+# network / schedule: resolved by aliases via the registries in config.py
+network:
+    name: cnet
+    params:
+        in_channels: 2
+        out_channels: 2
+        channels: [4, 4]
+        time_channels: 24
+        bias: false
 
-lr: 0.0001
-max_epochs: 2
-batch_size: 512
-num_workers: 1
-patience: 50
+schedule:
+    name: geometric
+    params:
+        sigma_min: 1.0
+        sigma_max: 10.0
 
-# NETWORK PARAMETERS
-# parameters:
-in_channels: 2
-hidden_channels: [64, 64]
-time_channels: 128
-label_dim: 128
-activation: leakyrelu
-sigma_min: 0.02
-sigma_max: 10
+model:
+    decay_rate: 0.999
+    device: cpu
 
-# SAMPLE GENERATION PARAMETERS
-sample_size: 100000
-time_steps: 500
+optimizer:
+    name: adam
+    params:
+        lr: 2.0e-3
+
+lr_scheduler:
+    name: cosine
+    params:
+        T_max: 200
+
+trainer:
+    file_path: run001
+    use_ddp: false
+    checkpoint_dir: ./data/checkpoints
+    weight_dir: ./data/weights
+    log_dir: "logs/runs"
+    metadata_csv_path: "./data/run_metadata.csv"
+    save_weight_history: false
+    weight_history_frequency: 10
+
+
+run:
+    N_epochs: 200
+    early_stopping: 10
+    min_delta: 1.0e-4
