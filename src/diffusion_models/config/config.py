@@ -263,4 +263,3 @@ def build_lr_scheduler(
         return None
     cls = LR_SCHEDULER_REGISTRY.get(config.name)
     return cls(optimizer, **config.params)
-

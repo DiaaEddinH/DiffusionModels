@@ -24,7 +24,7 @@ def build_run_logger(name: str, log_path: str | Path, rank: int = 0) -> logging.
     so they won't duplicate output across processes.
 
 
-    :param name: Logger name. If a log with this name already exists, the same logger will be rebuilt/reused. 
+    :param name: Logger name. If a log with this name already exists, the same logger will be rebuilt/reused.
     :type name: str
     :param log_path: File to write log lines into. Parent directories are created if missing.
     :type log_path: str | Path
@@ -65,7 +65,7 @@ def stringify_csv_value(value: Any) -> str:
     if isinstance(value, dict):
         return json.dumps(value, sort_keys=True)
     return str(value)
-    
+
 
 def csv_fieldnames_for_experiment_config() -> list[str]:
     hints = get_type_hints(ExperimentConfig)
@@ -77,6 +77,7 @@ def csv_fieldnames_for_experiment_config() -> list[str]:
         else:
             names.append(f.name)
     return names
+
 
 def flatten_experiment_config(config: ExperimentConfig) -> dict[str, str]:
     hints = get_type_hints(ExperimentConfig)
@@ -95,34 +96,41 @@ def flatten_experiment_config(config: ExperimentConfig) -> dict[str, str]:
             row[f.name] = stringify_csv_value(value)
     return row
 
+
 class RunMetadataLogger:
     """
     Appends one CSV row per training run with the exact ExperimentConfig that produced it.
     """
+
     def __init__(self, csv_path: str | Path):
         self.csv_path = Path(csv_path)
-        self.field_names = ["run_id", "timestamp", "log_file", "status", "final_epoch", "final_loss"] + csv_fieldnames_for_experiment_config()
+        self.field_names = [
+            "run_id",
+            "timestamp",
+            "log_file",
+            "status",
+            "final_epoch",
+            "final_loss",
+        ] + csv_fieldnames_for_experiment_config()
 
     def log_run(
-            self,
-            config: ExperimentConfig,
-            run_id: str,
-            log_file: str | Path | None = None,
-            status: LogStatus = LogStatus.STARTED,
-            final_epoch: int | None = None,
-            final_loss: float | None = None,
-        ):
+        self,
+        config: ExperimentConfig,
+        run_id: str,
+        log_file: str | Path | None = None,
+        status: LogStatus = LogStatus.STARTED,
+        final_epoch: int | None = None,
+        final_loss: float | None = None,
+    ):
         row = {
             "run_id": run_id,
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "log_file": str(log_file) if log_file is not None else "",
             "status": status,
             "final_epoch": "" if final_epoch is None else str(final_epoch),
-            "final_loss": "" if final_loss is None else str(final_loss)
+            "final_loss": "" if final_loss is None else str(final_loss),
         }
-        row.update(
-            flatten_experiment_config(config)
-        )
+        row.update(flatten_experiment_config(config))
 
         self.csv_path.parent.mkdir(parents=True, exist_ok=True)
         write_header = not self.csv_path.exists()
@@ -131,4 +139,3 @@ class RunMetadataLogger:
             if write_header:
                 writer.writeheader()
             writer.writerow(row)
-                        

@@ -12,9 +12,18 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from diffusion_models.models.models import ScoreModel
 from torch.utils.data import DataLoader, DistributedSampler
-from diffusion_models.logging.utils import build_run_logger, LogStatus, RunMetadataLogger
+from diffusion_models.logging.utils import (
+    build_run_logger,
+    LogStatus,
+    RunMetadataLogger,
+)
 from torch.nn.parallel import DistributedDataParallel as DDP
-from diffusion_models.config.config import RunConfig, ExperimentConfig, build_lr_scheduler, build_optimizer
+from diffusion_models.config.config import (
+    RunConfig,
+    ExperimentConfig,
+    build_lr_scheduler,
+    build_optimizer,
+)
 
 
 class Trainer:
@@ -85,10 +94,10 @@ class Trainer:
         self.checkpoint_frequency = 10
         self.use_ddp = False if str(device) == "mps" else use_ddp
         self.lr_scheduler = lr_scheduler
-        self.run_config=run_config
-        self.metadata_csv_path=metadata_csv_path
-        self.save_weight_history=save_weight_history
-        self.weight_history_frequency=weight_history_frequency
+        self.run_config = run_config
+        self.metadata_csv_path = metadata_csv_path
+        self.save_weight_history = save_weight_history
+        self.weight_history_frequency = weight_history_frequency
 
         checkpoint_dir = Path(checkpoint_dir)
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -121,14 +130,13 @@ class Trainer:
                 log_file=self.log_file,
                 status=LogStatus.STARTED,
             )
-    
 
     def _unwrapped_model(self) -> Module:
         return self.model.module if self.use_ddp else self.model
 
     def _current_config(self) -> ExperimentConfig | None:
         return getattr(self._unwrapped_model(), "config", None)
-    
+
     def _set_model(self, model: torch.nn.Module, optimizer: torch.optim.Optimizer):
         """
         Set the model and optimizer, load checkpoint if available, and wrap with DDP if needed.
@@ -193,7 +201,9 @@ class Trainer:
         model._save_weights(path)
         self.logger.info(f"Epoch {epoch} | Weight history snapshot saved at {path}")
 
-    def _log_run_end(self, status: LogStatus, final_epoch: int, final_loss: float | None):
+    def _log_run_end(
+        self, status: LogStatus, final_epoch: int, final_loss: float | None
+    ):
         config = self._current_config()
         if config is None:
             return
@@ -243,7 +253,6 @@ class Trainer:
         if min_delta is None:
             min_delta = self.run_config.min_delta if self.run_config else 1e-4
 
-        
         model = self._unwrapped_model()
         model.train()
         tqdm_epoch = trange(self.epochs, N_epochs, disable=(self.rank != 0))
@@ -251,7 +260,7 @@ class Trainer:
         best_loss = float("inf")
         counter = 0
         last_epoch = self.epochs
-        status=LogStatus.COMPLETED
+        status = LogStatus.COMPLETED
 
         try:
             for epoch in tqdm_epoch:
@@ -273,10 +282,7 @@ class Trainer:
                     self.optimizer.zero_grad()
 
                     loss = model.train_step(
-                        batch,
-                        self.optimizer,
-                        *labels,
-                        lr_scheduler=lr_scheduler
+                        batch, self.optimizer, *labels, lr_scheduler=lr_scheduler
                     )
 
                     # DDP loss reduction
@@ -301,9 +307,11 @@ class Trainer:
                     if epoch % self.checkpoint_frequency == 0:
                         self._save_checkpoint(epoch)
 
-                    if self.save_weight_history and epoch % self.weight_history_frequency == 0:
+                    if (
+                        self.save_weight_history
+                        and epoch % self.weight_history_frequency == 0
+                    ):
                         self._save_weight_history(epoch)
-                    
 
                     # Early stopping check
                     if best_loss - current_loss > min_delta:
@@ -339,16 +347,26 @@ class Trainer:
             raise
         finally:
             if self.rank == 0:
-                final_loss = best_loss if best_loss != float("inf") else (
-                    self.history[-1] if self.history else None
+                final_loss = (
+                    best_loss
+                    if best_loss != float("inf")
+                    else (self.history[-1] if self.history else None)
                 )
-                self._log_run_end(status=status, final_epoch=last_epoch, final_loss=final_loss)
-            
+                self._log_run_end(
+                    status=status, final_epoch=last_epoch, final_loss=final_loss
+                )
 
     @classmethod
-    def from_config(cls, model: ScoreModel, config: ExperimentConfig, device: str | torch.device | None = None) -> Trainer:
+    def from_config(
+        cls,
+        model: ScoreModel,
+        config: ExperimentConfig,
+        device: str | torch.device | None = None,
+    ) -> Trainer:
         model.config = config
-        resolved_device = device if device is not None else (config.model.device or model.device)
+        resolved_device = (
+            device if device is not None else (config.model.device or model.device)
+        )
         model.to(resolved_device)
         optimizer = build_optimizer(model, config.optimizer)
         lr_scheduler = build_lr_scheduler(optimizer, config.lr_scheduler)
@@ -368,4 +386,3 @@ class Trainer:
             lr_scheduler=lr_scheduler,
             run_config=config.run,
         )
-

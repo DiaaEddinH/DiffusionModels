@@ -22,6 +22,7 @@ except Exception:
 # Dummy class definitions
 # --------------------------------------------------
 
+
 class DummySchedule(Schedule):
     def __init__(self, std_scale=1.0, eps=1e-3):
         super().__init__(arg_min=0, arg_max=0, eps=eps)
@@ -30,7 +31,7 @@ class DummySchedule(Schedule):
 
     def diffusion_coeff(self, t: torch.Tensor):
         self.diffusion_ts = t.detach().clone()
-        return self._std_scale *  torch.sqrt(2 * t)
+        return self._std_scale * torch.sqrt(2 * t)
 
     def drift_term(self, x, t):
         return -torch.ones_like(x)
@@ -38,7 +39,9 @@ class DummySchedule(Schedule):
     def stddev(self, t: torch.Tensor):
         return self._std_scale * t
 
-    def mean_stddev(self, x: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def mean_stddev(
+        self, x: torch.Tensor, t: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # identically return input `x`
         d = (x.dim() - 1) * (None,)
         return x * torch.exp(-t)[:, *d], self.stddev(t)[:, *d]
@@ -77,16 +80,19 @@ class DummyNetwork(torch.nn.Module):
     Small trainable network for testing ScoreModel end-to-end. Has a
     single learnable parameter so EMA/train_step are doing something meaningful.
     """
+
     def __init__(self, scale: float = 1.0):
         super().__init__()
         self.scale = torch.nn.Parameter(torch.tensor(float(scale)))
- 
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, *labels):
         return self.scale * x
+
 
 # --------------------------------------------------
 # Fixtures
 # --------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def seed_rng() -> Iterator[None]:
@@ -113,9 +119,11 @@ def seed_rng() -> Iterator[None]:
 def dummy_schedule():
     return DummySchedule(std_scale=2.0)
 
+
 @pytest.fixture
 def dummy_model(dummy_schedule):
     return DummyModel(dummy_schedule)
+
 
 @pytest.fixture
 def dummy_network():

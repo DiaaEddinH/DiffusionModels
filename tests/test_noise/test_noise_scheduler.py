@@ -2,23 +2,31 @@ import math
 import torch
 import pytest
 
-from diffusion_models.noise.noise_scheduler import Schedule, GeometricSchedule, LinearSchedule
+from diffusion_models.noise.noise_scheduler import (
+    Schedule,
+    GeometricSchedule,
+    LinearSchedule,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
- 
+
+
 @pytest.fixture
 def geo_schedule():
     return GeometricSchedule(sigma_min=1.0, sigma_max=10.0, eps=1e-3)
+
 
 @pytest.fixture
 def linear_schedule():
     return LinearSchedule(beta_min=0.02, beta_max=10.0, eps=1e-3)
 
+
 # ---------------------------------------------------------------------------
 # Schedule
 # ---------------------------------------------------------------------------
+
 
 class TestScheduleAbstract:
     def test_cannot_instantiate_abstract_base(self):
@@ -34,9 +42,11 @@ class TestScheduleAbstract:
         s = GeometricSchedule(sigma_min=1.0, sigma_max=10.0)
         assert s.eps == 1e-3
 
+
 # ---------------------------------------------------------------------------
 # build_variance (uses GeometricSchedule but it tests shared logic from base class)
 # ---------------------------------------------------------------------------
+
 
 class TestBuildVarianceSchedule:
     @pytest.mark.parametrize("schedule_type", ["uniform", "log", "karras"])
@@ -47,7 +57,9 @@ class TestBuildVarianceSchedule:
 
     def test_rejects_invalid_schedule_type(self, geo_schedule):
         with pytest.raises(AssertionError):
-            geo_schedule.build_variance_schedule(10, schedule_type="not_a_real_schedule")
+            geo_schedule.build_variance_schedule(
+                10, schedule_type="not_a_real_schedule"
+            )
 
     @pytest.mark.parametrize("schedule_type", ["uniform", "log", "karras"])
     def test_monotonically_decreasing(self, geo_schedule, schedule_type):
@@ -56,16 +68,22 @@ class TestBuildVarianceSchedule:
         assert (diffs <= 1e-6).all()
 
     def test_karras_rho_changes_spacing(self, geo_schedule):
-        ts_rho1 = geo_schedule.build_variance_schedule(10, schedule_type="karras", rho=1.0)
-        ts_rho7 = geo_schedule.build_variance_schedule(10, schedule_type="karras", rho=7.0)
+        ts_rho1 = geo_schedule.build_variance_schedule(
+            10, schedule_type="karras", rho=1.0
+        )
+        ts_rho7 = geo_schedule.build_variance_schedule(
+            10, schedule_type="karras", rho=7.0
+        )
 
         # Different rho should produce different intermediate spacing.
         # Endpoints are (approximately) fixed.
         assert not torch.allclose(ts_rho1[1:-1], ts_rho7[1:-1], atol=1e-4)
 
+
 # ---------------------------------------------------------------------------
 # GeometricSchedule (Variance expanding)
 # ---------------------------------------------------------------------------
+
 
 class TestGeometricSchedule:
     def test_stddev_at_t0_is_zero(self, geo_schedule):
@@ -86,8 +104,12 @@ class TestGeometricSchedule:
 
     def test_diffusion_coeff_correct_at_endpoints(self, geo_schedule):
         t0, t1 = torch.tensor([0.0, 1.0])
-        assert geo_schedule.diffusion_coeff(t0).item() == pytest.approx(geo_schedule.arg_min)
-        assert geo_schedule.diffusion_coeff(t1).item() == pytest.approx(geo_schedule.arg_max)
+        assert geo_schedule.diffusion_coeff(t0).item() == pytest.approx(
+            geo_schedule.arg_min
+        )
+        assert geo_schedule.diffusion_coeff(t1).item() == pytest.approx(
+            geo_schedule.arg_max
+        )
 
     def test_drift_term_is_zero(self, geo_schedule):
         x = torch.randn(5, 3)
@@ -114,22 +136,28 @@ class TestGeometricSchedule:
         t_recovered = geo_schedule.invert_variance_to_time(variance)
         assert torch.allclose(t_recovered, t_original, atol=1e-4)
 
+
 # ---------------------------------------------------------------------------
 # LinearSchedule (Variance preserving)
 # ---------------------------------------------------------------------------
 
+
 class TestLinearSchedule:
     def test_beta_schedule_at_endpoints(self, linear_schedule):
         t0, t1 = torch.tensor([0.0, 1.0])
-        assert linear_schedule.beta_schedule(t0).item() == pytest.approx(linear_schedule.arg_min)
-        assert linear_schedule.beta_schedule(t1).item() == pytest.approx(linear_schedule.arg_max)
+        assert linear_schedule.beta_schedule(t0).item() == pytest.approx(
+            linear_schedule.arg_min
+        )
+        assert linear_schedule.beta_schedule(t1).item() == pytest.approx(
+            linear_schedule.arg_max
+        )
 
     def test_mean_factor_at_t0_is_one(self, linear_schedule):
         t0 = torch.tensor([0.0])
         assert linear_schedule.mean_factor(t0).item() == pytest.approx(1.0, abs=1e-6)
 
     def test_mean_factor_decreasing_with_t(self, linear_schedule):
-        t = torch.linspace(0., 1., steps=20)
+        t = torch.linspace(0.0, 1.0, steps=20)
         m = linear_schedule.mean_factor(t)
         assert (m[1:] <= m[:-1] + 1e-8).all()
 
@@ -138,7 +166,7 @@ class TestLinearSchedule:
         assert linear_schedule.stddev(t0).item() == pytest.approx(0.0, abs=1e-6)
 
     def test_stddev_bounded_between_zero_and_one(self, linear_schedule):
-        t = torch.linspace(0., 1., steps=20)
+        t = torch.linspace(0.0, 1.0, steps=20)
         s = linear_schedule.stddev(t)
         assert (s >= -1e-6).all()
         assert (s <= 1 + 1e-6).all()

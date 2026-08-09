@@ -198,15 +198,18 @@ def ws_conv(*args, dim: int = 2, **kwargs):
         conv_cls = getattr(torch.nn, f"Conv{dim}d")
     except KeyError:
         raise ValueError(f"Conv{dim}d is not an implemented/available functionality!")
-    
+
     return weight_norm(conv_cls(*args, **kwargs))
+
 
 def ws_convT(*args, dim: int = 2, **kwargs):
     try:
         conv_cls = conv_cls = getattr(torch.nn, f"ConvTranspose{dim}d")
     except KeyError:
-        raise ValueError(f"ConvTranspose{dim}d is not an implemented/available functionality!")
-    
+        raise ValueError(
+            f"ConvTranspose{dim}d is not an implemented/available functionality!"
+        )
+
     return weight_norm(conv_cls(*args, **kwargs))
 
 
@@ -249,7 +252,7 @@ class UNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
             ]
             + [
@@ -262,7 +265,7 @@ class UNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
                 for c_in, c_out in zip(self.channels, self.channels[1:])
             ]
@@ -278,7 +281,7 @@ class UNet(torch.nn.Module):
                     bias=bias,
                     output_padding=0,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
             ]
             + [
@@ -290,7 +293,7 @@ class UNet(torch.nn.Module):
                     bias=bias,
                     output_padding=0,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
                 for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
             ]
@@ -298,7 +301,12 @@ class UNet(torch.nn.Module):
 
         self.act = activation
         self.final = ws_convT(
-            2 * channels[0], self.out_channels, kernel_size=3, bias=bias, device=device, dim=dim
+            2 * channels[0],
+            self.out_channels,
+            kernel_size=3,
+            bias=bias,
+            device=device,
+            dim=dim,
         )
 
     def forward(self, *inputs: tuple):
@@ -307,7 +315,9 @@ class UNet(torch.nn.Module):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
-        d = (x.dim() - 2) * [None, ]
+        d = (x.dim() - 2) * [
+            None,
+        ]
 
         for i, layer in enumerate(self.down_layers):
             x = layer(x) * self.t_linears[i](t_emb)[..., *d]
@@ -362,7 +372,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
             ]
             + [
@@ -375,7 +385,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
                 for c_in, c_out in zip(self.channels, self.channels[1:])
             ]
@@ -392,7 +402,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
             ]
             + [
@@ -405,7 +415,7 @@ class CNet(torch.nn.Module):
                     padding=1,
                     padding_mode=padding_mode,
                     device=device,
-                    dim=dim
+                    dim=dim,
                 )
                 for c_in, c_out in zip(self.channels_r[1:], self.channels_r[2:])
             ]
@@ -420,7 +430,7 @@ class CNet(torch.nn.Module):
             padding_mode=padding_mode,
             bias=bias,
             device=device,
-            dim=dim
+            dim=dim,
         )
 
     def forward(self, *inputs: tuple):
@@ -429,7 +439,9 @@ class CNet(torch.nn.Module):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
-        d = (x.dim() - 2) * [None, ]
+        d = (x.dim() - 2) * [
+            None,
+        ]
 
         for i, layer in enumerate(self.down_layers):
             x = layer(x) * self.t_linears[i](t_emb)[..., *d]
@@ -545,7 +557,9 @@ class UNetWAttention(UNet):
     def _forward_impl(self, x, t):
         skip = []
         t_emb = self.time_embed(t)
-        d = (x.dim() - 2) * [None, ]
+        d = (x.dim() - 2) * [
+            None,
+        ]
 
         for i, layer in enumerate(self.down_layers):
             x = layer(x) + self.t_linears[i](t_emb)[..., *d]

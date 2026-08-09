@@ -272,6 +272,7 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
     schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
         Noise schedule of the diffusion process.
     """
+
     def __init__(self, model: ScoreModel):
         super().__init__(model)
         self.gamma_max = math.sqrt(2) - 1
@@ -321,7 +322,7 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
         :type keep_history: bool
         :return: Samples of the final distribution. If `keep_history=True`, returns the trajectory history
         :rtype: Tensor
-        """        
+        """
         timesteps, _, _, _ = self.build_schedule(
             num_steps,
             schedule_type,
@@ -382,7 +383,7 @@ class AngularMixin:
     """
     Mixin to introduce handling of angular data eg U(1), XY angles etc.
 
-    Must appear *before* the sampler class in the MRO, eg:: 
+    Must appear *before* the sampler class in the MRO, eg::
 
         class AngularEMSampler(AngularMixin, EulerMaruyamaSampler):
             pass
@@ -453,11 +454,11 @@ class AngularEMSampler(AngularMixin, EulerMaruyamaSampler):
     schedule : :class:`Schedule`
         Noise schedule of the diffusion process.
     """
+
     pass
 
 
 class AngularStochasticHeunSampler(AngularMixin, StochasticHeunSampler):
-
     """
     This class has equipped :class:`~diffusion_models.sampling.samplers.StochasticHeunSampler` for diffusion model sample generation of angular data, eg U(1), XY angles etc.
 
@@ -475,7 +476,8 @@ class AngularStochasticHeunSampler(AngularMixin, StochasticHeunSampler):
     schedule : :class:`Schedule`
         Noise schedule of the diffusion process.
     """
-    pass    
+
+    pass
 
 
 class ScoreRescalingMixin:
@@ -483,7 +485,7 @@ class ScoreRescalingMixin:
     Mixin that allows score rescaling of a raw model output by an arbitrary multiplicative factor.
     Works by overriding :meth:`BaseSampler._score`.
 
-    Must appear *before* the sampler class in the MRO, eg:: 
+    Must appear *before* the sampler class in the MRO, eg::
 
         class ScaledEuler(ScoreRescalingMixin, EulerMaruyamaSampler):
             pass
@@ -538,6 +540,7 @@ class MAALASampler(EulerMaruyamaSampler):
     schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
         Noise schedule of the diffusion process.
     """
+
     def __init__(self, model: ScoreModel, action: Callable):
         super().__init__(model)
         self.action = action
@@ -672,8 +675,10 @@ class MAALASampler(EulerMaruyamaSampler):
 
         return self.collect(hist, x, flag=keep_history)
 
+
 class MAALASamplerWRescaling(ScoreRescalingMixin, MAALASampler):
     pass
+
 
 class AngularMAALASamplerWRescaling(AngularMixin, MAALASamplerWRescaling):
     pass

@@ -1,10 +1,12 @@
 """
 Tests for logging/utils.py
 """
+
 import pytest
 import logging
 
 from diffusion_models.logging.utils import build_run_logger, RunMetadataLogger
+
 
 class TestBuildRunLogger:
     def test_rank_zero_creates_log_file(self, tmp_path):

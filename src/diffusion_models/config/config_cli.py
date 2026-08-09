@@ -6,6 +6,7 @@ from typing import Any
 from pathlib import Path
 from diffusion_models.config.config import ExperimentConfig
 
+
 def _set_nested(data: dict[str, Any], dotted_key: str, value: Any):
     """
     Set `data[a][b]...[z] = value` for a dotted key "a.b...z", creating intermediate dicts as needed.
@@ -44,7 +45,10 @@ def _parse_override_value(raw: str) -> Any:
     """
     return yaml.load(raw, Loader=ExperimentConfig.yaml_loader)
 
-def _apply_overrides(raw_config: dict[str, Any], overrides: list[str]) -> dict[str, Any]:
+
+def _apply_overrides(
+    raw_config: dict[str, Any], overrides: list[str]
+) -> dict[str, Any]:
     for item in overrides:
         if "=" not in item:
             raise ValueError(f"--set expects KEY.PATH=VALUE, got: {item!r}")
@@ -52,20 +56,29 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: list[str]) -> dict[s
         _set_nested(raw_config, dotted_key.strip(), _parse_override_value(value_str))
     return raw_config
 
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Load an experiment config, with optional dotted-path overrides."
     )
     parser.add_argument(
-        "--config", "-c", type=str, default="configs/example_config.yaml",
+        "--config",
+        "-c",
+        type=str,
+        default="configs/example_config.yaml",
         help="Path to the YAML experiment config.",
     )
     parser.add_argument(
-        "--set", "-s", dest="overrides", action="append", default=[],
+        "--set",
+        "-s",
+        dest="overrides",
+        action="append",
+        default=[],
         metavar="KEY.PATH=VALUE",
         help="Override a config value, eg --set trainer.file_path=run001. Repeatable.",
     )
     return parser
+
 
 def parse_config(argv: list[str] | None = None) -> ExperimentConfig:
     """
@@ -89,7 +102,8 @@ def parse_config(argv: list[str] | None = None) -> ExperimentConfig:
     raw_config = _apply_overrides(raw_config, args.overrides)
     return ExperimentConfig.from_dict(raw_config)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
 
     config = parse_config()
     print(config)
@@ -114,4 +128,3 @@ if __name__=="__main__":
 
     # print(config.run.N_epochs)
     # print(test_data["run"]["N_epochs"])
-

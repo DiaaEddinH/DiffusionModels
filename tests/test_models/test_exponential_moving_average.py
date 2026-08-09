@@ -171,7 +171,9 @@ class TestToDevice:
             is exponential_moving_average
         )
 
-    def test_to_does_not_overwrite_backup_with_shadow(self, model, exponential_moving_average):
+    def test_to_does_not_overwrite_backup_with_shadow(
+        self, model, exponential_moving_average
+    ):
         with torch.no_grad():
             model.w.data.fill_(123.0)
         exponential_moving_average.update()
@@ -183,4 +185,6 @@ class TestToDevice:
         exponential_moving_average.to(dtype=torch.float64)
 
         assert exponential_moving_average.backup["w"].item() == pytest.approx(123.0)
-        assert exponential_moving_average.backup["w"].item() != pytest.approx(exponential_moving_average.shadow["w"].item())
+        assert exponential_moving_average.backup["w"].item() != pytest.approx(
+            exponential_moving_average.shadow["w"].item()
+        )

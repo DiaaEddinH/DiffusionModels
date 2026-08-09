@@ -13,7 +13,11 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from typing import Any
 
-from diffusion_models.config.config import NETWORK_REGISTRY, SCHEDULE_REGISTRY, ExperimentConfig
+from diffusion_models.config.config import (
+    NETWORK_REGISTRY,
+    SCHEDULE_REGISTRY,
+    ExperimentConfig,
+)
 
 
 class ExponentialMovingAverage:
@@ -24,7 +28,8 @@ class ExponentialMovingAverage:
     :type model: Module
     :param decay_rate: Exponential moving average decay rate. Closer to 1.0 means slower-changing averages.
     :param decay_rate: float
-    """    
+    """
+
     def __init__(self, model: Module, decay_rate: float = 0.999):
         self.decay_rate = decay_rate
         self.model = model
@@ -44,7 +49,8 @@ class ExponentialMovingAverage:
                 continue
 
             self.shadow[name] = (
-                (1.0 - self.decay_rate) * param.data + self.decay_rate * self.shadow[name]
+                (1.0 - self.decay_rate) * param.data
+                + self.decay_rate * self.shadow[name]
             ).clone()
 
     def apply_shadow(self):
@@ -104,6 +110,7 @@ class ScoreModel(Module):
     :param decay_rate: Decay rate for the ExponentialMovingAverage of the model's weights
     :type decay_rate: float
     """
+
     def __init__(
         self,
         network: Module,
@@ -120,7 +127,9 @@ class ScoreModel(Module):
         if device is not None:
             self.to(device)
 
-        self.exponential_moving_average = ExponentialMovingAverage(self, decay_rate=decay_rate)
+        self.exponential_moving_average = ExponentialMovingAverage(
+            self, decay_rate=decay_rate
+        )
 
         if kwargs:
             warnings.warn(
@@ -148,7 +157,9 @@ class ScoreModel(Module):
             result.exponential_moving_average.to(*args, **kwargs)
         return result
 
-    def forward(self, x: Tensor, t: Tensor, *labels: Tensor | tuple[Tensor, ...]) -> Tensor:
+    def forward(
+        self, x: Tensor, t: Tensor, *labels: Tensor | tuple[Tensor, ...]
+    ) -> Tensor:
         """
         :param x: Input state.
         :type x: Tensor
@@ -179,7 +190,13 @@ class ScoreModel(Module):
         score = self.forward(perturbed_x, random_t, *labels)
         return 0.5 * torch.mean((score * std + z) ** 2)
 
-    def train_step(self, batch: Tensor, optimizer: Optimizer, *labels: Tensor | tuple[Tensor, ...], lr_scheduler: LRScheduler | None = None) -> Tensor:
+    def train_step(
+        self,
+        batch: Tensor,
+        optimizer: Optimizer,
+        *labels: Tensor | tuple[Tensor, ...],
+        lr_scheduler: LRScheduler | None = None,
+    ) -> Tensor:
         """
         Runs a single optimization step and updates the ExponentialMovingAverage weights.
 
@@ -212,7 +229,7 @@ class ScoreModel(Module):
 
         :param file_path: File path of weights to be loaded from.
         :type file_path: str | Path
-        """        
+        """
         save_dict = torch.load(file_path, map_location=self.device, weights_only=True)
         self.load_state_dict(save_dict["MODEL_STATE"])
         self.history = save_dict.get("HISTORY", [])
@@ -236,7 +253,11 @@ class ScoreModel(Module):
         print(f"Weights saved at {file_path}...")
 
     @classmethod
-    def from_config(cls, config: ExperimentConfig, device: str | torch.device | None = None,) -> ScoreModel:
+    def from_config(
+        cls,
+        config: ExperimentConfig,
+        device: str | torch.device | None = None,
+    ) -> ScoreModel:
         """
         Build a ScoreModel instance from a parsed config `ExperimentConfig`. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
         Such classes need to be registered before this constructor is called, otherwise they won't be recognized.
@@ -263,7 +284,11 @@ class ScoreModel(Module):
         return model
 
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path, device: str | torch.device | None = None,) -> ScoreModel:
+    def from_yaml(
+        cls,
+        yaml_path: str | Path,
+        device: str | torch.device | None = None,
+    ) -> ScoreModel:
         """
         Convenience wrapper: parses a YAML file into an ExperimentConfig and builds the model in one call. Equivalent to::
 

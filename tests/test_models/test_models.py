@@ -14,6 +14,7 @@ from diffusion_models.config.config import (
     RunConfig,
 )
 
+
 @pytest.fixture
 def score_model(dummy_network, dummy_schedule):
     return ScoreModel(network=dummy_network, schedule=dummy_schedule, decay_rate=0.9)
@@ -23,8 +24,11 @@ def score_model(dummy_network, dummy_schedule):
 # Construction
 # ----------------------------------------------------------------------
 
+
 class TestConstruction:
-    def test_stores_network_and_schedule(self, score_model, dummy_network, dummy_schedule):
+    def test_stores_network_and_schedule(
+        self, score_model, dummy_network, dummy_schedule
+    ):
         assert score_model.network is dummy_network
         assert score_model.schedule is dummy_schedule
 
@@ -35,15 +39,22 @@ class TestConstruction:
         assert score_model.history == []
 
     def test_ema_shadow_seeded_from_initial_weights(self, score_model, dummy_network):
-        assert torch.allclose(score_model.exponential_moving_average.shadow["network.scale"], dummy_network.scale.data)
+        assert torch.allclose(
+            score_model.exponential_moving_average.shadow["network.scale"],
+            dummy_network.scale.data,
+        )
 
     def test_ema_decay_is_configurable(self, dummy_network, dummy_schedule):
-        model = ScoreModel(network=dummy_network, schedule=dummy_schedule, decay_rate=0.21)
+        model = ScoreModel(
+            network=dummy_network, schedule=dummy_schedule, decay_rate=0.21
+        )
         assert model.exponential_moving_average.decay_rate == pytest.approx(0.21)
 
     def test_unused_kwargs_warn(self, dummy_network, dummy_schedule):
         with pytest.warns(UserWarning, match="unused"):
-            ScoreModel(network=dummy_network, schedule=dummy_schedule, not_a_real_arg=123)
+            ScoreModel(
+                network=dummy_network, schedule=dummy_schedule, not_a_real_arg=123
+            )
 
     def test_explicit_device_moves_model(self, dummy_network, dummy_schedule):
         model = ScoreModel(network=dummy_network, schedule=dummy_schedule, device="cpu")
@@ -52,9 +63,11 @@ class TestConstruction:
     def test_config_is_nont_until_from_config(self, score_model):
         assert score_model.config is None
 
+
 # ----------------------------------------------------------------------
 # device property/to()
 # ----------------------------------------------------------------------
+
 
 class TestDeviceSync:
     def test_device_property_reflects_to_call(self, score_model):
@@ -63,7 +76,10 @@ class TestDeviceSync:
 
     def test_to_moves_ema_shadow_dtype(self, score_model):
         score_model.to(dtype=torch.float64)
-        assert score_model.exponential_moving_average.shadow["network.scale"].dtype == torch.float64
+        assert (
+            score_model.exponential_moving_average.shadow["network.scale"].dtype
+            == torch.float64
+        )
 
     def test_to_returns_self(self, score_model):
         assert score_model.to(dtype=torch.float32) is score_model
@@ -73,62 +89,67 @@ class TestDeviceSync:
 # forward()
 # ----------------------------------------------------------------------
 
+
 class TestForward:
-    def test_rescales_network_output_by_stddev(self, score_model, dummy_network, dummy_schedule):
+    def test_rescales_network_output_by_stddev(
+        self, score_model, dummy_network, dummy_schedule
+    ):
         x = torch.randn(4, 3)
         t = torch.rand(4).clamp(min=0.1)  # avoid t=0 where stddev is 0
         out = score_model.forward(x, t)
         d = (x.dim() - 1) * (None,)
         expected = dummy_network(x, t) / dummy_schedule.stddev(t)[:, *d]
         assert torch.allclose(out, expected)
- 
+
     def test_forwards_labels_to_network(self, dummy_schedule):
         seen = {}
- 
+
         class LabelCapturingNetwork(Module):
             def __init__(self):
                 super().__init__()
                 self.scale = Parameter(torch.tensor(1.0))
- 
+
             def forward(self, x, t, *labels):
                 seen["labels"] = labels
                 return self.scale * x
- 
+
         model = ScoreModel(network=LabelCapturingNetwork(), schedule=dummy_schedule)
         t = torch.rand(2).clamp(min=0.1)
         model.forward(torch.randn(2, 2), t, "label_a")
         assert seen["labels"] == ("label_a",)
 
+
 # ---------------------------------------------------------------------------
 # loss_fn
 # ---------------------------------------------------------------------------
- 
+
+
 class TestLossFn:
     def test_returns_scalar(self, score_model):
         loss = score_model.loss_fn(torch.randn(8, 3))
         assert loss.dim() == 0
- 
+
     def test_is_finite_and_nonnegative(self, score_model):
         loss = score_model.loss_fn(torch.randn(8, 3))
         assert torch.isfinite(loss)
         assert loss.item() >= 0
- 
+
     def test_gradients_flow_to_network_params(self, score_model, dummy_network):
         loss = score_model.loss_fn(torch.randn(8, 3))
         loss.backward()
         assert dummy_network.scale.grad is not None
- 
+
     def test_eps_keeps_random_t_away_from_zero(self, score_model, monkeypatch):
         # Force torch.rand to return the minimum value (0.0) and confirm the
         # sampled time is still shifted up by eps, not exactly 0.
         monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.zeros(*a))
         captured = {}
         orig_mean_stddev = score_model.schedule.mean_stddev
- 
+
         def spy(x, t):
             captured["t"] = t.clone()
             return orig_mean_stddev(x, t)
- 
+
         score_model.schedule.mean_stddev = spy
         score_model.loss_fn(torch.randn(4, 3))
         assert (captured["t"] >= 1e-5 - 1e-12).all()
@@ -146,7 +167,7 @@ class TestLossFn:
         perturbed_x = mean + fixed_noise * std
         score = score_model.forward(perturbed_x, fixed_t)
 
-        expected = 0.5 * torch.mean((score * std + fixed_noise)**2)
+        expected = 0.5 * torch.mean((score * std + fixed_noise) ** 2)
 
         assert torch.allclose(loss, expected)
 
@@ -156,24 +177,26 @@ class TestLossFn:
         monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.zeros(*a))
         captured = {}
         orig_mean_stddev = score_model.schedule.mean_stddev
- 
+
         def spy(x, t):
             captured["t"] = t.clone()
             return orig_mean_stddev(x, t)
- 
+
         score_model.schedule.mean_stddev = spy
         score_model.loss_fn(torch.randn(4, 3))
-        assert torch.allclose(captured["t"], torch.full_like(captured["t"], score_model.schedule.eps))
- 
+        assert torch.allclose(
+            captured["t"], torch.full_like(captured["t"], score_model.schedule.eps)
+        )
+
     def test_random_t_never_exceeds_one(self, score_model, monkeypatch):
         monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.ones(*a) * 0.999)
         captured = {}
         orig_mean_stddev = score_model.schedule.mean_stddev
- 
+
         def spy(x, t):
             captured["t"] = t.clone()
             return orig_mean_stddev(x, t)
- 
+
         score_model.schedule.mean_stddev = spy
         score_model.loss_fn(torch.randn(4, 3))
         assert (captured["t"] <= 1.0).all()
@@ -182,40 +205,43 @@ class TestLossFn:
 # ---------------------------------------------------------------------------
 # train_step
 # ---------------------------------------------------------------------------
- 
+
+
 class TestTrainStep:
     def test_updates_network_parameters(self, score_model, dummy_network):
         before = dummy_network.scale.item()
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)
         assert dummy_network.scale.item() != pytest.approx(before)
- 
+
     def test_updates_ema_shadow(self, score_model):
         before = score_model.exponential_moving_average.shadow["network.scale"].clone()
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)
-        assert not torch.allclose(before, score_model.exponential_moving_average.shadow["network.scale"])
- 
+        assert not torch.allclose(
+            before, score_model.exponential_moving_average.shadow["network.scale"]
+        )
+
     def test_appends_to_history(self, score_model):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         assert score_model.history == []
         score_model.train_step(torch.randn(8, 3), optimizer)
         assert len(score_model.history) == 1
         assert isinstance(score_model.history[0], float)
- 
+
     def test_calls_scheduler_step_if_given(self, score_model):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
         lr_before = optimizer.param_groups[0]["lr"]
         score_model.train_step(torch.randn(8, 3), optimizer, lr_scheduler=lr_scheduler)
         assert optimizer.param_groups[0]["lr"] < lr_before
- 
+
     def test_sets_train_mode(self, score_model):
         score_model.eval()
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)
         assert score_model.training is True
- 
+
     def test_returns_loss_tensor(self, score_model):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         loss = score_model.train_step(torch.randn(8, 3), optimizer)
@@ -225,49 +251,54 @@ class TestTrainStep:
 # ---------------------------------------------------------------------------
 # save / load weights
 # ---------------------------------------------------------------------------
- 
+
+
 class TestCheckpointing:
-    def test_roundtrip_preserves_weights(self, score_model, dummy_network, dummy_schedule, tmp_path):
+    def test_roundtrip_preserves_weights(
+        self, score_model, dummy_network, dummy_schedule, tmp_path
+    ):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)  # move weights off init
- 
+
         ckpt_path = tmp_path / "weights.pt"
         score_model._save_weights(ckpt_path)
- 
+
         fresh_network = DummyNetwork(scale=999.0)
         fresh_model = ScoreModel(network=fresh_network, schedule=dummy_schedule)
         fresh_model._load_weights(ckpt_path)
- 
+
         assert torch.allclose(fresh_network.scale.data, dummy_network.scale.data)
- 
+
     def test_roundtrip_preserves_history(self, score_model, dummy_schedule, tmp_path):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)
         score_model.train_step(torch.randn(8, 3), optimizer)
- 
+
         ckpt_path = tmp_path / "weights.pt"
         score_model._save_weights(ckpt_path)
- 
+
         fresh_model = ScoreModel(network=DummyNetwork(), schedule=dummy_schedule)
         fresh_model._load_weights(ckpt_path)
- 
+
         assert fresh_model.history == score_model.history
- 
-    def test_roundtrip_preserves_ema_shadow(self, score_model, dummy_schedule, tmp_path):
+
+    def test_roundtrip_preserves_ema_shadow(
+        self, score_model, dummy_schedule, tmp_path
+    ):
         optimizer = torch.optim.SGD(score_model.parameters(), lr=0.1)
         score_model.train_step(torch.randn(8, 3), optimizer)
- 
+
         ckpt_path = tmp_path / "weights.pt"
         score_model._save_weights(ckpt_path)
- 
+
         fresh_model = ScoreModel(network=DummyNetwork(), schedule=dummy_schedule)
         fresh_model._load_weights(ckpt_path)
- 
+
         assert torch.allclose(
             fresh_model.exponential_moving_average.shadow["network.scale"],
             score_model.exponential_moving_average.shadow["network.scale"],
         )
- 
+
     def test_save_creates_missing_parent_dirs(self, score_model, tmp_path):
         nested_path = tmp_path / "a" / "b" / "c" / "weights.pt"
         score_model._save_weights(nested_path)
@@ -277,7 +308,8 @@ class TestCheckpointing:
 # ---------------------------------------------------------------------------
 # from_config
 # ---------------------------------------------------------------------------
- 
+
+
 class TestFromConfig:
     @pytest.fixture(autouse=True)
     def _register_test_components(self):
@@ -288,12 +320,16 @@ class TestFromConfig:
         yield
         NETWORK_REGISTRY.unregister("__test_dummy_network__")
         SCHEDULE_REGISTRY.unregister("__test_dummy_schedule__")
- 
+
     @pytest.fixture
     def experiment_config(self):
         return ExperimentConfig(
-            network=ComponentConfig(name="__test_dummy_network__", params={"scale": 0.7}),
-            schedule=ComponentConfig(name="__test_dummy_schedule__", params={"std_scale": 2.0}),
+            network=ComponentConfig(
+                name="__test_dummy_network__", params={"scale": 0.7}
+            ),
+            schedule=ComponentConfig(
+                name="__test_dummy_schedule__", params={"std_scale": 2.0}
+            ),
             trainer=TrainerConfig(file_path="test_run"),
             run=RunConfig(N_epochs=1),
             model=ScoreModelConfig(decay_rate=0.8, device="cpu"),
@@ -309,20 +345,19 @@ class TestFromConfig:
     def test_applies_decay_rate_from_config(self, experiment_config):
         model = ScoreModel.from_config(experiment_config)
         assert model.exponential_moving_average.decay_rate == pytest.approx(0.8)
- 
+
     def test_device_override_takes_precedence_over_config(self, experiment_config):
         model = ScoreModel.from_config(experiment_config, device="cpu")
         assert model.device == torch.device("cpu")
- 
+
     def test_stores_config(self, experiment_config):
         model = ScoreModel.from_config(experiment_config)
         assert model.config is experiment_config
- 
+
     def test_unknown_network_name_raises(self, experiment_config):
         experiment_config.network.name = "definitely_not_registered"
         with pytest.raises(KeyError):
             ScoreModel.from_config(experiment_config)
-
 
 
 class TestFromYaml:
@@ -333,7 +368,7 @@ class TestFromYaml:
         yield
         NETWORK_REGISTRY.unregister("__test_dummy_network__")
         SCHEDULE_REGISTRY.unregister("__test_dummy_schedule__")
- 
+
     @pytest.fixture
     def config_path(self, tmp_path):
         content = """
@@ -360,26 +395,28 @@ run:
         path = tmp_path / "config.yaml"
         path.write_text(content)
         return path
- 
+
     def test_matches_two_step_from_config_flow(self, config_path):
         via_from_yaml = ScoreModel.from_yaml(config_path)
         via_two_step = ScoreModel.from_config(ExperimentConfig.from_yaml(config_path))
-        
-        assert via_from_yaml.network.scale.item() == pytest.approx(via_two_step.network.scale.item())
+
+        assert via_from_yaml.network.scale.item() == pytest.approx(
+            via_two_step.network.scale.item()
+        )
         assert via_from_yaml.exponential_moving_average.decay_rate == pytest.approx(
             via_two_step.exponential_moving_average.decay_rate
         )
- 
+
     def test_builds_model_with_correct_components(self, config_path):
         model = ScoreModel.from_yaml(config_path)
         assert isinstance(model.network, DummyNetwork)
         assert isinstance(model.schedule, DummySchedule)
         assert model.network.scale.item() == pytest.approx(0.7)
- 
+
     def test_device_override_takes_precedence_over_yaml(self, config_path):
         model = ScoreModel.from_yaml(config_path, device="cpu")
         assert model.device == torch.device("cpu")
- 
+
     def test_stores_config(self, config_path):
         model = ScoreModel.from_yaml(config_path)
         assert isinstance(model.config, ExperimentConfig)
