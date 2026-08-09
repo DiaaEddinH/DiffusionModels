@@ -42,7 +42,9 @@ class Registry:
             class GeometricSchedule(Schedule): ...
 
         Also, callable directly for out-of-package classes::
+
             SCHEDULE_REGISTRY.register("geometric", "ve")(GeometricSchedule)
+
         """
         if not names:
             raise ValueError("register() requires at least one name")
@@ -214,6 +216,10 @@ class TrainerConfig(YAMLConfig):
     use_ddp: bool = False
     checkpoint_dir: str = "./data/checkpoints"
     weight_dir: str = "./data/weights"
+    log_dir: str = "logs/runs"
+    metadata_csv_path: str = "./data/run_metadata.csv"
+    save_weight_history: bool = False
+    weight_history_frequency: int = 10
 
 
 @dataclass
@@ -258,10 +264,3 @@ def build_lr_scheduler(
     cls = LR_SCHEDULER_REGISTRY.get(config.name)
     return cls(optimizer, **config.params)
 
-
-if __name__ == "__main__":
-
-    yaml_path = "configs/newexample_config.yaml"
-    config = ExperimentConfig.from_yaml(yaml_path)
-    # config.to_yaml("configs/test_exampler.yaml")
-    print(config)
