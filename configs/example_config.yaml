@@ -1,12 +1,11 @@
 # network / schedule: resolved by aliases via the registries in config.py
 network:
-    name: cnet
+    name: linear
     params:
         in_channels: 2
-        out_channels: 2
         channels: [4, 4]
         time_channels: 24
-        bias: false
+        dropout_rate: 0.0
 
 schedule:
     name: geometric
@@ -35,12 +34,12 @@ trainer:
     weight_dir: ./data/weights
     log_dir: "logs/runs"
     metadata_csv_path: "./data/run_metadata.csv"
-    save_weight_history: false
+    save_weight_history: true
     weight_history_frequency: 10
 
 
 run:
-    N_epochs: 2
+    N_epochs: 20
     early_stopping: 10
     min_delta: 1.0e-4
     batch_size: 10

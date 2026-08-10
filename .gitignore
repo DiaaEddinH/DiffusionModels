@@ -11,9 +11,11 @@ configs/*.yaml
 !documentation.yaml
 !configs/example_config.yaml
 
-# Ignore .csv, .log
+# Ignore .csv, .log, .pt, *.json
 *.csv
 *.log
+*.pt
+*.json
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints
