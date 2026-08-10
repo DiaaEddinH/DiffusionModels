@@ -226,9 +226,11 @@ class TrainerConfig(YAMLConfig):
 class RunConfig(YAMLConfig):
     """
     Maps directly onto Trainer.train()'s keyword arguments.
+    `batch_size` is used to construct the DataLoader used in Trainer.
     """
 
     N_epochs: int
+    batch_size: int = 32
     early_stopping: int = 10
     min_delta: float = 1e-4
 
@@ -244,6 +246,7 @@ class ExperimentConfig(YAMLConfig):
         default_factory=lambda: ComponentConfig(name="adam", params={"lr": 2e-4})
     )
     lr_scheduler: ComponentConfig | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------------

@@ -57,9 +57,46 @@ def _apply_overrides(
     return raw_config
 
 
+def _extras_to_overrides(extra_argv: list[str]) -> list[str]:
+    """
+    Converts CLI flags argparse didn't recognize (from parse_known_args) into `extra.<key>=<value>` override strings.
+    Accepts both `--key value` and `--key=value` forms and dotted keys.
+    By default, a bare flag with no following value or followed by another flag is treated as `true`.
+
+    :param extra_argv: Flags that are not recognised by `parse_known_args`.
+    :type extra_argv: list[str]
+    :return: A list of override strings
+    :rtype: list[str]
+
+    :raises ValueError: If a flag doesn't start with `--`. Only long option extras can be recognized.
+    """
+    overrides: list[str] = []
+    i = 0
+    while i < len(extra_argv):
+        flag = extra_argv[i]
+        if not flag.startswith("--"):
+            raise ValueError(
+                f"Unrecognized argument '{flag}' - extra CLI args must be "
+                f"in --key value or --key=value format."
+            )
+        key = flag[2:]
+        if "=" in key:
+            key, _, value = key.partition("=")
+            overrides.append(f"extra.{key}={value}")
+            i += 1
+        elif i + 1 < len(extra_argv) and not extra_argv[i + 1].startswith("--"):
+            overrides.append(f"extra.{key}={extra_argv[i+1]}")
+            i += 2
+        else:
+            overrides.append(f"extra.{key}=true")
+            i += 1
+    return overrides
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Load an experiment config, with optional dotted-path overrides."
+        description="Load an experiment config, with optional dotted-path overrides.",
+        allow_abbrev=False,
     )
     parser.add_argument(
         "--config",
@@ -90,7 +127,7 @@ def parse_config(argv: list[str] | None = None) -> ExperimentConfig:
     :rtype: ExperimentConfig
     """
     parser = build_arg_parser()
-    args = parser.parse_args(argv)
+    args, extra_argv = parser.parse_known_args(argv)
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -99,7 +136,8 @@ def parse_config(argv: list[str] | None = None) -> ExperimentConfig:
     with config_path.open("r") as fp:
         raw_config = yaml.load(fp, Loader=ExperimentConfig.yaml_loader) or {}
 
-    raw_config = _apply_overrides(raw_config, args.overrides)
+    overrides = args.overrides + _extras_to_overrides(extra_argv)
+    raw_config = _apply_overrides(raw_config, overrides)
     return ExperimentConfig.from_dict(raw_config)
 
 

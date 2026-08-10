@@ -45,6 +45,14 @@ class TestFieldNames:
         assert "model.decay_rate" in names
         assert "trainer.file_path" in names
         assert "run.N_epochs" in names
+        assert "run.batch_size" in names
+
+    def test_includes_extra_column_as_a_single_flat_field(self):
+        # `extra` is a plain dict (not a YAMLConfig section), so it should
+        # appear as exactly one column - "extra"
+        names = csv_fieldnames_for_experiment_config()
+        assert "extra" in names
+        assert not any(n.startswith("extra.") for n in names)
 
     def test_does_not_include_extra_run_columns(self):
         names = csv_fieldnames_for_experiment_config()
@@ -58,6 +66,7 @@ class TestFlatten:
         assert row["network.name"] == "unet"
         assert row["trainer.file_path"] == "run001"
         assert row["run.N_epochs"] == "10"
+        assert row["run.batch_size"] == "32"
         assert row["model.decay_rate"] == "0.5"
 
     def test_params_dict_is_json_encoded(self, config: ExperimentConfig):
@@ -81,6 +90,22 @@ class TestFlatten:
         )
         row = flatten_experiment_config(config)
         assert row["model.device"] == ""
+
+    def test_empty_extra_dict_encodes_to_empty_json_object(self, config):
+        assert config.extra == {}
+        row = flatten_experiment_config(config)
+        assert row["extra"] == "{}"
+
+    def test_populated_extra_dict_is_json_encoded(self):
+        config = ExperimentConfig(
+            network=ComponentConfig(name="unet"),
+            schedule=ComponentConfig(name="geometric"),
+            trainer=TrainerConfig(file_path="run"),
+            run=RunConfig(N_epochs=1),
+            extra={"dataset": "mnist", "num_workers": 4},
+        )
+        row = flatten_experiment_config(config)
+        assert json.loads(row["extra"]) == {"dataset": "mnist", "num_workers": 4}
 
 
 class TestRunMetadataLogger:

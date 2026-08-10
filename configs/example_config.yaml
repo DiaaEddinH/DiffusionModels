@@ -40,6 +40,10 @@ trainer:
 
 
 run:
-    N_epochs: 200
+    N_epochs: 2
     early_stopping: 10
     min_delta: 1.0e-4
+    batch_size: 10
+
+extra:
+    param0: ~

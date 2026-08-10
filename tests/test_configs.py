@@ -429,6 +429,101 @@ schedule:
         config = ExperimentConfig.from_yaml(str(path))
         assert isinstance(config, ExperimentConfig)
 
+    def test_batch_size_present_in_run_section(self, tmp_path):
+        content = MINIMAL_YAML.replace("N_epochs: 50", "N_epochs: 50\n  batch_size: 16")
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.run.batch_size == 16
+
+    def test_batch_size_defaults_when_omitted(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_YAML)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.run.batch_size == 32
+
+
+# ---------------------------------------------------------------------------
+# ExperimentConfig.extra
+# ---------------------------------------------------------------------------
+
+
+class TestExperimentConfigExtra:
+    def test_defaults_to_empty_dict(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_YAML)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.extra == {}
+
+    def test_populated_from_yaml(self, tmp_path):
+        content = MINIMAL_YAML + "\nextra:\n  dataset: mnist\n  num_workers: 4\n"
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.extra == {"dataset": "mnist", "num_workers": 4}
+
+    def test_arbitrary_keys_do_not_raise_unlike_other_sections(self, tmp_path):
+        # No schema validation applies inside `extra` - any keys are fine,
+        # unlike every other section (which would raise on an unknown key).
+        content = (
+            MINIMAL_YAML
+            + "\nextra:\n  totally_made_up_key: 123\n  another.weird-one: xyz\n"
+        )
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.extra["totally_made_up_key"] == 123
+
+    def test_nested_dict_inside_extra_stays_a_plain_dict(self, tmp_path):
+        content = (
+            MINIMAL_YAML + "\nextra:\n  dataset:\n    name: mnist\n    augment: true\n"
+        )
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.extra["dataset"] == {"name": "mnist", "augment": True}
+
+    def test_set_directly_via_from_dict(self):
+        data = {
+            "network": {"name": "unet"},
+            "schedule": {"name": "geometric"},
+            "trainer": {"file_path": "run"},
+            "run": {"N_epochs": 10},
+            "extra": {"seed": 42},
+        }
+        config = ExperimentConfig.from_dict(data)
+        assert config.extra == {"seed": 42}
+
+    def test_roundtrips_via_to_yaml_from_yaml(self, tmp_path):
+        original = ExperimentConfig(
+            network=ComponentConfig(name="unet"),
+            schedule=ComponentConfig(name="geometric"),
+            trainer=TrainerConfig(file_path="run"),
+            run=RunConfig(N_epochs=10),
+            extra={"dataset": "mnist", "num_workers": 4},
+        )
+        path = tmp_path / "roundtrip.yaml"
+        original.to_yaml(path)
+        loaded = ExperimentConfig.from_yaml(path)
+        assert loaded == original
+        assert loaded.extra == {"dataset": "mnist", "num_workers": 4}
+
+    def test_separate_instances_do_not_share_extra_dict(self):
+        a = ExperimentConfig(
+            network=ComponentConfig(name="unet"),
+            schedule=ComponentConfig(name="geometric"),
+            trainer=TrainerConfig(file_path="run_a"),
+            run=RunConfig(N_epochs=10),
+        )
+        b = ExperimentConfig(
+            network=ComponentConfig(name="unet"),
+            schedule=ComponentConfig(name="geometric"),
+            trainer=TrainerConfig(file_path="run_b"),
+            run=RunConfig(N_epochs=10),
+        )
+        a.extra["x"] = 1
+        assert b.extra == {}
+
 
 # ---------------------------------------------------------------------------
 # Config dataclass defaults
@@ -461,8 +556,12 @@ class TestTrainerConfig:
     def test_defaults(self):
         cfg = TrainerConfig(file_path="run001")
         assert cfg.use_ddp is False
-        assert cfg.checkpoint_dir == "./data/checkpoints"
+        assert cfg.log_dir == "logs/runs"
+        assert cfg.save_weight_history is False
+        assert cfg.weight_history_frequency == 10
         assert cfg.weight_dir == "./data/weights"
+        assert cfg.checkpoint_dir == "./data/checkpoints"
+        assert cfg.metadata_csv_path == "./data/run_metadata.csv"
 
 
 class TestRunConfig:
@@ -472,8 +571,17 @@ class TestRunConfig:
 
     def test_defaults(self):
         cfg = RunConfig(N_epochs=100)
+        assert cfg.batch_size == 32
         assert cfg.early_stopping == 10
         assert cfg.min_delta == pytest.approx(1e-4)
+
+    def test_batch_size_is_overridable(self):
+        cfg = RunConfig(N_epochs=100, batch_size=64)
+        assert cfg.batch_size == 64
+
+    def test_batch_size_from_dict(self):
+        cfg = RunConfig.from_dict({"N_epochs": 10, "batch_size": 16})
+        assert cfg.batch_size == 16
 
 
 # ---------------------------------------------------------------------------
