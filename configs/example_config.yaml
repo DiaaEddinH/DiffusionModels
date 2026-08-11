@@ -37,12 +37,19 @@ trainer:
     save_weight_history: true
     weight_history_frequency: 10
 
-
 run:
     N_epochs: 20
     early_stopping: 10
     min_delta: 1.0e-4
     batch_size: 10
+
+sampler:
+    name: euler_maruyama
+    params:
+        num_steps: 500
+        schedule_type: uniform
+        rho: 1.0
+        keep_history: false
 
 extra:
     param0: ~

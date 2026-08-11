@@ -46,6 +46,8 @@ class TestFieldNames:
         assert "trainer.file_path" in names
         assert "run.N_epochs" in names
         assert "run.batch_size" in names
+        assert "sampler.name" in names
+        assert "sampler.params" in names
 
     def test_includes_extra_column_as_a_single_flat_field(self):
         # `extra` is a plain dict (not a YAMLConfig section), so it should

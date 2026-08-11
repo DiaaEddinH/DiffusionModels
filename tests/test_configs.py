@@ -1,27 +1,24 @@
-# tests/test_config_loader.py
-import sys
-import unittest
-import argparse
-from io import StringIO
-from contextlib import redirect_stderr
-from pathlib import Path
-
-
-import pytest
-import torch
+"""
+Test for diffusion_models/config/config.py:
+Registry, YAMLConfig and subclasses, and the optimizer/sampler/lr_scheduler builders.
+"""
 import yaml
+import torch
+import pytest
 
 from typing import Optional
 from diffusion_models.config.config import (
     Registry,
+    RunConfig,
     YAMLConfig,
+    TrainerConfig,
     ComponentConfig,
     ScoreModelConfig,
-    TrainerConfig,
-    RunConfig,
     ExperimentConfig,
+    build_sampler,
     build_optimizer,
     build_lr_scheduler,
+    SAMPLER_REGISTRY,
     OPTIMIZER_REGISTRY,
     LR_SCHEDULER_REGISTRY,
 )
@@ -225,6 +222,7 @@ class TestToYaml:
             run=RunConfig(N_epochs=10),
             model=ScoreModelConfig(decay_rate=0.5, device="cuda"),
             lr_scheduler=ComponentConfig(name="step", params={"step_size": 5}),
+            sampler=ComponentConfig(name="stochastic_heun", params={"S_churn": 40.0}),
         )
         path = tmp_path / "experiment.yaml"
         original.to_yaml(path)
@@ -297,10 +295,9 @@ class TestFromDict:
         assert config.optimizer == ComponentConfig(name="adam", params={"lr": 2e-4})
 
     def test_optional_nested_field_explicit_null_does_not_crash(self):
-        # Regression test: an Optional[YAMLConfig] field set to `null` in
-        # YAML resolves to the non-None dataclass type via _unwrap_optional,
-        # but the actual value is None - from_dict must not blindly call
-        # `field_type.from_dict(None)`.
+        # An Optional[YAMLConfig] field set to `null` in YAML
+        # resolves to the non-None dataclass type via _unwrap_optional,
+        # but the actual value is None 
         data = {
             "network": {"name": "unet"},
             "schedule": {"name": "geometric"},
@@ -463,8 +460,8 @@ class TestExperimentConfigExtra:
         assert config.extra == {"dataset": "mnist", "num_workers": 4}
 
     def test_arbitrary_keys_do_not_raise_unlike_other_sections(self, tmp_path):
-        # No schema validation applies inside `extra` - any keys are fine,
-        # unlike every other section (which would raise on an unknown key).
+        # No schema validation applies inside `extra`; any keys are fine,
+        # unlike other sections (which would raise on an unknown key).
         content = (
             MINIMAL_YAML
             + "\nextra:\n  totally_made_up_key: 123\n  another.weird-one: xyz\n"
@@ -523,6 +520,135 @@ class TestExperimentConfigExtra:
         )
         a.extra["x"] = 1
         assert b.extra == {}
+
+
+# ---------------------------------------------------------------------------
+# ExperimentConfig.sampler
+# ---------------------------------------------------------------------------
+ 
+class TestExperimentConfigSampler:
+    def test_defaults_to_euler_maruyama_with_empty_params(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_YAML)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.sampler == ComponentConfig(name="euler_maruyama", params={})
+ 
+    def test_populated_from_yaml(self, tmp_path):
+        content = MINIMAL_YAML + (
+            "\nsampler:\n"
+            "  name: stochastic_heun\n"
+            "  params:\n"
+            "    num_steps: 100\n"
+            "    S_churn: 40.0\n"
+        )
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+        config = ExperimentConfig.from_yaml(path)
+        assert config.sampler.name == "stochastic_heun"
+        assert config.sampler.params == {"num_steps": 100, "S_churn": 40.0}
+ 
+    def test_set_directly_via_from_dict(self):
+        data = {
+            "network": {"name": "unet"},
+            "schedule": {"name": "geometric"},
+            "trainer": {"file_path": "run"},
+            "run": {"N_epochs": 10},
+            "sampler": {"name": "stochastic_heun", "params": {"num_steps": 50}},
+        }
+        config = ExperimentConfig.from_dict(data)
+        assert isinstance(config.sampler, ComponentConfig)
+        assert config.sampler.name == "stochastic_heun"
+        assert config.sampler.params == {"num_steps": 50}
+ 
+    def test_roundtrips_via_to_yaml_from_yaml(self, tmp_path):
+        original = ExperimentConfig(
+            network=ComponentConfig(name="unet"),
+            schedule=ComponentConfig(name="geometric"),
+            trainer=TrainerConfig(file_path="run"),
+            run=RunConfig(N_epochs=10),
+            sampler=ComponentConfig(name="stochastic_heun", params={"S_churn": 40.0}),
+        )
+        path = tmp_path / "roundtrip.yaml"
+        original.to_yaml(path)
+        loaded = ExperimentConfig.from_yaml(path)
+        assert loaded == original
+        assert loaded.sampler.name == "stochastic_heun"
+ 
+ 
+# ---------------------------------------------------------------------------
+# SAMPLER_REGISTRY / build_sampler
+# ---------------------------------------------------------------------------
+ 
+class TestSamplerRegistry:
+    def test_starts_without_prebuilt_entries(self):
+        # Unlike optimizer/lr_scheduler, no samplers are pre-registered 
+        with pytest.raises(KeyError):
+            SAMPLER_REGISTRY.get("definitely_not_registered_xyz")
+ 
+ 
+class TestBuildSampler:
+    @pytest.fixture(autouse=True)
+    def _register(self):
+        class DummySampler:
+            def __init__(self, model):
+                self.model = model
+ 
+        SAMPLER_REGISTRY.register("__test_dummy_sampler__")(DummySampler)
+        self.DummySampler = DummySampler
+        yield
+        SAMPLER_REGISTRY.unregister("__test_dummy_sampler__")
+ 
+    def test_constructs_with_only_model(self):
+        model = object()
+        config = ComponentConfig(name="__test_dummy_sampler__", params={"num_steps": 500})
+        sampler = build_sampler(model, config)
+        assert isinstance(sampler, self.DummySampler)
+        assert sampler.model is model
+ 
+    def test_params_are_not_passed_to_constructor(self):
+        # This is the key behavioral difference from build_optimizer/
+        # build_lr_scheduler: params are for .sample(), not __init__.
+        calls = {}
+ 
+        class RecordingSampler:
+            def __init__(self, model, **kwargs):
+                calls["kwargs"] = kwargs
+ 
+        SAMPLER_REGISTRY.register("__test_recording_sampler__")(RecordingSampler)
+        try:
+            config = ComponentConfig(
+                name="__test_recording_sampler__",
+                params={"num_steps": 500, "rho": 7.0},
+            )
+            build_sampler(object(), config)
+            assert calls["kwargs"] == {}
+        finally:
+            SAMPLER_REGISTRY.unregister("__test_recording_sampler__")
+ 
+    def test_unknown_sampler_name_raises(self):
+        config = ComponentConfig(name="definitely_not_registered")
+        with pytest.raises(KeyError):
+            build_sampler(object(), config)
+ 
+    def test_end_to_end_with_real_sampler(self, dummy_model):
+        # Proves the full flow works with an actual sampler class, not just
+        # a trivial fake: build via the registry, then call .sample() using
+        # config.params exactly as documented in build_sampler's docstring.
+        from diffusion_models.sampling.samplers import EulerMaruyamaSampler
+ 
+        SAMPLER_REGISTRY.register("__test_euler_maruyama__")(EulerMaruyamaSampler)
+        try:
+            config = ComponentConfig(
+                name="__test_euler_maruyama__",
+                params={"num_steps": 3, "schedule_type": "uniform"},
+            )
+            sampler = build_sampler(dummy_model, config)
+            assert isinstance(sampler, EulerMaruyamaSampler)
+ 
+            out = sampler.sample((2, 2), **config.params)
+            assert out.shape == (2, 2)
+        finally:
+            SAMPLER_REGISTRY.unregister("__test_euler_maruyama__")
 
 
 # ---------------------------------------------------------------------------

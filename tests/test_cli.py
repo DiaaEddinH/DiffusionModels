@@ -1,10 +1,11 @@
 import pytest
 from diffusion_models.config.config_cli import (
     _set_nested,
-    _parse_override_value,
-    _apply_overrides,
-    build_arg_parser,
     parse_config,
+    build_arg_parser,
+    _apply_overrides,
+    _extras_to_overrides,
+    _parse_override_value,
 )
 from diffusion_models.config.config import ExperimentConfig
 
@@ -110,6 +111,47 @@ class TestApplyOverrides:
         raw = {}
         result = _apply_overrides(raw, ["trainer.file_path=run=with=equals"])
         assert result["trainer"]["file_path"] == "run=with=equals"
+
+
+# ---------------------------------------------------------------------------
+# _extras_to_overrides
+# ---------------------------------------------------------------------------
+ 
+class TestExtrasToOverrides:
+    def test_key_value_pair_form(self):
+        assert _extras_to_overrides(["--dataset", "mnist"]) == ["extra.dataset=mnist"]
+ 
+    def test_key_equals_value_form(self):
+        assert _extras_to_overrides(["--num_workers=4"]) == ["extra.num_workers=4"]
+ 
+    def test_bare_flag_with_nothing_after_becomes_true(self):
+        assert _extras_to_overrides(["--verbose"]) == ["extra.verbose=true"]
+ 
+    def test_bare_flag_followed_by_another_flag_becomes_true(self):
+        result = _extras_to_overrides(["--verbose", "--dataset", "mnist"])
+        assert result == ["extra.verbose=true", "extra.dataset=mnist"]
+ 
+    def test_dotted_key_supported(self):
+        assert _extras_to_overrides(["--dataset.name", "mnist"]) == ["extra.dataset.name=mnist"]
+ 
+    def test_multiple_key_value_pairs(self):
+        result = _extras_to_overrides(["--dataset", "mnist", "--num_workers", "4"])
+        assert result == ["extra.dataset=mnist", "extra.num_workers=4"]
+ 
+    def test_negative_number_value_not_mistaken_for_a_flag(self):
+        assert _extras_to_overrides(["--offset", "-1"]) == ["extra.offset=-1"]
+ 
+    def test_empty_list_returns_empty_list(self):
+        assert _extras_to_overrides([]) == []
+ 
+    def test_token_without_leading_dashes_raises(self):
+        with pytest.raises(ValueError, match="Unrecognized argument"):
+            _extras_to_overrides(["dataset", "mnist"])
+ 
+    def test_mixed_forms_together(self):
+        result = _extras_to_overrides(["--dataset=mnist", "--num_workers", "4", "--verbose"])
+        assert result == ["extra.dataset=mnist", "extra.num_workers=4", "extra.verbose=true"]
+ 
 
 
 class TestBuildArgParser:
@@ -276,3 +318,117 @@ class TestParseConfigEndToEnd:
         via_cli = parse_config(["--config", str(config_path)])
         via_direct = ExperimentConfig.from_yaml(config_path)
         assert via_cli == via_direct
+
+
+class TestParseConfigBatchSize:
+    def test_default_batch_size(self, config_path):
+        config = parse_config(["--config", str(config_path)])
+        assert config.run.batch_size == 32
+ 
+    def test_override_batch_size(self, config_path):
+        config = parse_config(
+            ["--config", str(config_path), "--set", "run.batch_size=64"]
+        )
+        assert config.run.batch_size == 64
+ 
+ 
+class TestParseConfigSampler:
+    def test_default_sampler(self, config_path):
+        config = parse_config(["--config", str(config_path)])
+        assert config.sampler.name == "euler_maruyama"
+        assert config.sampler.params == {}
+ 
+    def test_override_sampler_name_and_nested_params(self, config_path):
+        config = parse_config([
+            "--config", str(config_path),
+            "--set", "sampler.name=stochastic_heun",
+            "--set", "sampler.params.num_steps=100",
+            "--set", "sampler.params.S_churn=40.0",
+        ])
+        assert config.sampler.name == "stochastic_heun"
+        assert config.sampler.params == {"num_steps": 100, "S_churn": 40.0}
+ 
+ 
+class TestParseConfigExtras:
+    def test_unrecognized_flag_captured_into_extra(self, config_path):
+        config = parse_config(["--config", str(config_path), "--dataset", "mnist"])
+        assert config.extra == {"dataset": "mnist"}
+ 
+    def test_multiple_unrecognized_flags(self, config_path):
+        config = parse_config([
+            "--config", str(config_path),
+            "--dataset", "mnist",
+            "--num_workers", "4",
+        ])
+        assert config.extra == {"dataset": "mnist", "num_workers": 4}
+ 
+    def test_bare_flag_becomes_boolean_true(self, config_path):
+        config = parse_config(["--config", str(config_path), "--augment"])
+        assert config.extra == {"augment": True}
+ 
+    def test_equals_form_extra_flag(self, config_path):
+        config = parse_config(["--config", str(config_path), "--num_workers=8"])
+        assert config.extra == {"num_workers": 8}
+ 
+    def test_dotted_extra_flag_nests(self, config_path):
+        config = parse_config([
+            "--config", str(config_path),
+            "--dataset.name", "mnist",
+            "--dataset.augment", "true",
+        ])
+        assert config.extra == {"dataset": {"name": "mnist", "augment": True}}
+ 
+    def test_set_overrides_and_bare_extras_both_apply(self, config_path):
+        config = parse_config([
+            "--config", str(config_path),
+            "--set", "trainer.file_path=overridden",
+            "--dataset", "mnist",
+        ])
+        assert config.trainer.file_path == "overridden"
+        assert config.extra == {"dataset": "mnist"}
+ 
+    def test_yaml_extra_section_and_cli_extras_merge(self, tmp_path):
+        content = MINIMAL_YAML + "\nextra:\n  dataset: cifar10\n  seed: 1\n"
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+ 
+        config = parse_config(["--config", str(path), "--num_workers", "4"])
+        assert config.extra == {"dataset": "cifar10", "seed": 1, "num_workers": 4}
+ 
+    def test_cli_extra_overrides_yaml_extra_for_same_key(self, tmp_path):
+        content = MINIMAL_YAML + "\nextra:\n  dataset: cifar10\n"
+        path = tmp_path / "config.yaml"
+        path.write_text(content)
+ 
+        config = parse_config(["--config", str(path), "--dataset", "mnist"])
+        assert config.extra == {"dataset": "mnist"}
+ 
+    def test_no_extras_given_leaves_extra_empty(self, config_path):
+        config = parse_config(["--config", str(config_path)])
+        assert config.extra == {}
+ 
+ 
+class TestAbbreviationDisabled:
+    """Regression tests for allow_abbrev=False: since unrecognized flags are
+    now meaningful (they become extras), an accidental prefix match against
+    --config/--set would silently do the wrong thing rather than error."""
+ 
+    def test_partial_flag_name_is_not_treated_as_set(self, config_path):
+        # "--se" would be an unambiguous abbreviation of "--set" if
+        # allow_abbrev were left at its (default) True - it must NOT be
+        # treated that way here.
+        config = parse_config(["--config", str(config_path), "--se", "trainer.file_path=hijacked"])
+        # "trainer.file_path=hijacked" should land in extra.se, NOT actually
+        # override trainer.file_path.
+        assert config.trainer.file_path == "run001"
+        assert config.extra == {"se": "trainer.file_path=hijacked"}
+ 
+    def test_partial_flag_name_is_not_treated_as_config(self, tmp_path, monkeypatch):
+        # "--co" would be an unambiguous abbreviation of "--config" if
+        # allow_abbrev were left at its default. Forcing an empty cwd makes
+        # this deterministic regardless of where the suite is actually run
+        # from (rather than assuming the default config path just happens
+        # not to exist).
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit):
+            parse_config(["--co", "somewhere.yaml"])

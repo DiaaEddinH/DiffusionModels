@@ -82,6 +82,7 @@ class Registry:
 
 
 NETWORK_REGISTRY = Registry("network")
+SAMPLER_REGISTRY = Registry("sampler")
 SCHEDULE_REGISTRY = Registry("schedule")
 OPTIMIZER_REGISTRY = Registry("optimizer")
 LR_SCHEDULER_REGISTRY = Registry("lr_scheduler")
@@ -246,6 +247,9 @@ class ExperimentConfig(YAMLConfig):
         default_factory=lambda: ComponentConfig(name="adam", params={"lr": 2e-4})
     )
     lr_scheduler: ComponentConfig | None = None
+    sampler: ComponentConfig = field(
+        default_factory=lambda: ComponentConfig(name="euler_maruyama", params={})
+    )
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -258,6 +262,9 @@ def build_optimizer(model: Module, config: ComponentConfig) -> Optimizer:
     cls = OPTIMIZER_REGISTRY.get(config.name)
     return cls(model.parameters(), **config.params)
 
+def build_sampler(model: Module, config: ComponentConfig) -> Any:
+    cls = SAMPLER_REGISTRY.get(config.name)
+    return cls(model)
 
 def build_lr_scheduler(
     optimizer: Optimizer, config: ComponentConfig | None

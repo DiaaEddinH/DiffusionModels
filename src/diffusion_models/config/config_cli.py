@@ -142,27 +142,6 @@ def parse_config(argv: list[str] | None = None) -> ExperimentConfig:
 
 
 if __name__ == "__main__":
-
+    # Run through CLI using `python src/diffusion_models/config/config_cli.py -c configs/example_config.yaml --flag 1`
     config = parse_config()
     print(config)
-    # args = parser.parse_args()
-    # config_path = Path(args.config)
-    # if not config_path.exists():
-    #     parser.error(f"Config file '{config_path}' not found.")
-
-    # with config_path.open("r") as fp:
-    #     raw_config = yaml.load(fp, Loader=ExperimentConfig.yaml_loader) or {}
-
-    # raw_config = _apply_overrides(raw_config, args.overrides)
-
-    # print(ExperimentConfig.from_dict(raw_config))
-
-    # yaml_path = "configs/newexample_config.yaml"
-    # config = ExperimentConfig.from_yaml(yaml_path)
-    # overrides = ["run.N_epochs=50",]
-    # print(config.run.N_epochs)
-
-    # test_data = _apply_overrides(config.to_dict(), overrides)
-
-    # print(config.run.N_epochs)
-    # print(test_data["run"]["N_epochs"])

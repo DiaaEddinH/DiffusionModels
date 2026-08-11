@@ -323,7 +323,7 @@ class Trainer:
                         counter += 1
 
                     self.logger.info(log_string)
-                    tqdm_epoch.set_description(log_string)
+                    # tqdm_epoch.set_description(log_string)
 
                     if counter >= early_stopping:
                         self.logger.info(
