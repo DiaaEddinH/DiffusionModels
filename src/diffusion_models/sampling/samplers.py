@@ -346,7 +346,7 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
             # Churn
             gamma_i = gamma if std_min <= std_i <= std_max else 0.0
             std_hat = std_i * (1 + gamma_i)
-            t_hat = self.schedule._invert_variance_to_time(std_hat**2)
+            t_hat = self.schedule.invert_variance_to_time(std_hat**2)
 
             ratio = self._mean_scale(x, t_hat.unsqueeze(0)) / self._mean_scale(
                 x, t_i.unsqueeze(0)
