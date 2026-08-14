@@ -109,8 +109,8 @@ class BaseSampler(ABC):
         """
         return self.model(x, t, *args)
 
-    def init_history(self, num_steps: int, shape: tuple) -> Tensor:
-        return torch.empty(num_steps, *shape, device=self.device)
+    def init_history(self, num_steps: int, shape: tuple, keep_history: bool = False) -> Tensor | None:
+        return torch.empty(num_steps, *shape, device=self.device) if keep_history else None
 
     def record(self, history: Tensor, x: Tensor, idx: int, flag: bool):
         if flag:
@@ -209,7 +209,7 @@ class EulerMaruyamaSampler(BaseSampler):
         )
 
         x = self.init_sample(shape)
-        hist = self.init_history(num_steps, shape)
+        hist = self.init_history(num_steps, shape, keep_history)
         self.model.eval()
 
         for i, t_i in enumerate(tqdm(timesteps)):
@@ -331,7 +331,7 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
         t_next_all = torch.cat([timesteps[1:], timesteps.new_tensor([self.eps])])
 
         x = self.init_sample(shape)
-        hist = self.init_history(num_steps, shape)
+        hist = self.init_history(num_steps, shape, keep_history)
         self.model.eval()
 
         gamma = min(S_churn / num_steps, self.gamma_max)
@@ -639,7 +639,7 @@ class MAALASampler(EulerMaruyamaSampler):
         )
 
         x = self.init_sample(shape)
-        hist = self.init_history(num_steps, shape)
+        hist = self.init_history(num_steps, shape, keep_history)
         self.model.eval()
 
         for i, t_i in enumerate(tqdm(timesteps)):
