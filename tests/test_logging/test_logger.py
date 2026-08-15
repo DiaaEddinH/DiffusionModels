@@ -5,7 +5,7 @@ Tests for logging/utils.py
 import pytest
 import logging
 
-from diffusion_models.logging.utils import build_run_logger, RunMetadataLogger
+from diffusion_models.loggingtools.utils import build_run_logger, RunMetadataLogger
 
 
 class TestBuildRunLogger:

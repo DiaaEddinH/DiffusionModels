@@ -12,7 +12,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from diffusion_models.models.models import ScoreModel
 from torch.utils.data import DataLoader, DistributedSampler
-from diffusion_models.logging.utils import (
+from diffusion_models.loggingtools.utils import (
     build_run_logger,
     LogStatus,
     RunMetadataLogger,

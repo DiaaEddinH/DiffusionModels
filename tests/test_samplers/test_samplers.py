@@ -57,21 +57,20 @@ class TestBaseSampler:
         assert torch.equal(out, dummy_model.output_scale * x)
 
     def test_init_history_shape_and_device(self, sampler):
-        hist = sampler.init_history(num_steps=5, shape=(4, 3))
+        hist = sampler.init_history(num_steps=5, shape=(4, 3), keep_history=True)
         assert hist.shape == (5, 4, 3)
         assert hist.device == sampler.device
 
     def test_record_writes_when_flag_true(self, sampler):
-        hist = sampler.init_history(2, (2, 2))
+        hist = sampler.init_history(2, (2, 2), keep_history=True)
         x = torch.ones(2, 2)
         sampler.record(hist, x, idx=1, flag=True)
         assert torch.equal(hist[1], x)
 
     def test_record_noop_when_flag_false(self, sampler):
-        hist = sampler.init_history(2, (2, 2))
-        original = hist.clone()
+        hist = sampler.init_history(2, (2, 2), keep_history=False)
         sampler.record(hist, torch.ones(2, 2), idx=0, flag=False)
-        assert torch.equal(hist, original)
+        assert hist is None
 
     def test_collect_returns_history_when_flag_true(self, sampler):
         hist = sampler.init_history(2, (2, 2))

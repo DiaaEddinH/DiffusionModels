@@ -257,6 +257,7 @@ class ScoreModel(Module):
         cls,
         config: ExperimentConfig,
         device: str | torch.device | None = None,
+        load_weights: bool = True
     ) -> ScoreModel:
         """
         Build a ScoreModel instance from a parsed config `ExperimentConfig`. `network`/`schedule` names are resolved via registries (NETWORK_REGISTRY/SCHEDULE_REGISTRY).
@@ -267,6 +268,8 @@ class ScoreModel(Module):
         :type config: ExperimentConfig
         :param device: Overrides `model.device` in the YAML if given, defaults to None.
         :type device: str | torch.device | None, optional
+        :param load_weights: If a weights file exists, it loads them via :meth:`ScoreModel._load_weights`
+        :type load_weights: bool, defaults to True
         :return: A constructed ScoreModel.
         :rtype: ScoreModel
         """
@@ -281,6 +284,13 @@ class ScoreModel(Module):
             decay_rate=config.model.decay_rate,
         )
         model.config = config
+
+        if load_weights:
+            weight_file = Path(config.trainer.weight_dir) / f"{config.trainer.file_path}_weights.pt"
+            if weight_file.exists():
+                model._load_weights(weight_file)
+                print(f"Loaded existing weights from {weight_file}")
+
         return model
 
     @classmethod
@@ -288,6 +298,7 @@ class ScoreModel(Module):
         cls,
         yaml_path: str | Path,
         device: str | torch.device | None = None,
+        load_weights: bool = True,
     ) -> ScoreModel:
         """
         Convenience wrapper: parses a YAML file into an ExperimentConfig and builds the model in one call. Equivalent to::
@@ -299,11 +310,13 @@ class ScoreModel(Module):
         :type yaml_path: str | Path
         :param device: Overrides `model.device` in the YAML if given, defaults to None.
         :type device: str | torch.device | None, optional
+        :param load_weights: If a weights file exists, it loads them via :meth:`ScoreModel._load_weights`
+        :type load_weights: bool, defaults to True
         :return: A constructed ScoreModel.
         :rtype: ScoreModel
         """
         config = ExperimentConfig.from_yaml(yaml_path)
-        return cls.from_config(config, device=device)
+        return cls.from_config(config, device=device, load_weights=load_weights)
 
 
 class EnergyBasedModel(ScoreModel):

@@ -13,7 +13,7 @@ from diffusion_models.config.config import (
     RunConfig,
     ExperimentConfig,
 )
-from diffusion_models.logging.utils import (
+from diffusion_models.loggingtools.utils import (
     RunMetadataLogger,
     flatten_experiment_config,
     csv_fieldnames_for_experiment_config,

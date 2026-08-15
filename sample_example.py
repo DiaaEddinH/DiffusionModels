@@ -25,7 +25,7 @@ if __name__ == "__main__":
     yaml_path = "configs/example_config.yaml"
     config = ExperimentConfig.from_yaml(yaml_path)
 
-    model = ScoreModel.from_config(config)
+    model = ScoreModel.from_config(config, load_weights=True)
     sampler = build_sampler(model, config.sampler)
 
     with torch.no_grad(), model.exponential_moving_average.average_parameters():

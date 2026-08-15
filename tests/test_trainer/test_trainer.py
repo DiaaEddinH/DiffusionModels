@@ -21,7 +21,7 @@ from diffusion_models.config.config import (
     NETWORK_REGISTRY,
     SCHEDULE_REGISTRY,
 )
-from diffusion_models.logging.utils import LogStatus
+from diffusion_models.loggingtools.utils import LogStatus
 
 
 @pytest.fixture
