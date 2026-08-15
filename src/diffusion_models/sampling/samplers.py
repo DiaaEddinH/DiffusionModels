@@ -634,11 +634,11 @@ class MAALASampler(EulerMaruyamaSampler):
         :param rho: See :meth:`build_schedule`.
         :type rho: float, optional
         """
-        timesteps, g2_t, step_size, step_size_sqrt = self.build_schedule(
+        timesteps, _, _, _ = self.build_schedule(
             num_steps, schedule_type, rho
         )
 
-        x = self.init_sample(shape)
+        y = self.init_sample(shape)
         hist = self.init_history(num_steps, shape, keep_history)
         self.model.eval()
 
@@ -646,16 +646,16 @@ class MAALASampler(EulerMaruyamaSampler):
             batch_t = t_i.expand(shape[0])
 
             # Predictor --- One step at the schedule's noise level ---
-            drift = self._score(x, batch_t, *labels)
-            y = self.update_step(x, g2_t[i] * drift, step_size[i], step_size_sqrt[i])
+            # drift = self._score(x, batch_t, *labels)
+            # y = self.update_step(x, g2_t[i] * drift, step_size[i], step_size_sqrt[i])
 
             # Corrector --- ``l_steps`` of Langevin dynamics ---
-            alpha = step_size[i]
-            alpha_sqrt = (2 * alpha).sqrt()
+            alpha = l_stepsize
+            alpha_sqrt = math.sqrt(2 * alpha)
 
             for _ in range(l_steps):
                 drift_initial = self._score(y, batch_t, *labels)
-                y_hat = self.update_step(y, g2_t[i] * drift_initial, alpha, alpha_sqrt)
+                y_hat = self.update_step(y, drift_initial, alpha, alpha_sqrt)
 
                 if i >= mh_threshold * num_steps:
                     drift_proposal = self._score(y_hat, batch_t, *labels)
@@ -670,10 +670,10 @@ class MAALASampler(EulerMaruyamaSampler):
                     y = self.mh_accept(y, y_hat, logq_diff)
                 else:
                     y = y_hat
-            x = y
-            self.record(hist, x, idx=i, flag=keep_history)
+            # x = y
+            self.record(hist, y, idx=i, flag=keep_history)
 
-        return self.collect(hist, x, flag=keep_history)
+        return self.collect(hist, y, flag=keep_history)
 
 
 class MAALASamplerWRescaling(ScoreRescalingMixin, MAALASampler):
@@ -681,7 +681,50 @@ class MAALASamplerWRescaling(ScoreRescalingMixin, MAALASampler):
 
 
 class AngularMAALASamplerWRescaling(AngularMixin, MAALASamplerWRescaling):
-    pass
+    def logq(
+        self,
+        initial: Tensor,
+        proposal: Tensor,
+        drift_initial: Tensor,
+        drift_proposal: Tensor,
+        step_size: Tensor | float,
+        dims: int | tuple[int, ...] = -1,
+    ) -> Tensor:
+        """
+        Log-ratio ``log q(initial|proposal) - log q(proposal|initial)`` of the Langevin proposal kernel for use in Metropolis-hastings correction.
+        It corrects the asymmetry in the forward and reverse proposals in the diffusion process.
+
+        :param initial: State before Langevin step
+        :type initial: Tensor
+        :param proposal: State after Langevin step
+        :type proposal: Tensor
+        :param drift_initial: Drift evaluated at ``initial``
+        :type drift_initial: Tensor
+        :param drift_proposal: Drift evaluated at ``proposal``
+        :type drift_proposal: Tensor
+        :param step_size: Langevin step size
+        :type step_size: Tensor | float
+        :param dims: Dimensions to sum the squared residual, defaults to -1
+        :type dims: int | tuple[int, ...], optional
+        :return: Log-ratio for the MH acceptance probability.
+        :rtype: Tensor
+        """
+        sigma2 = 2 * step_size
+        log_q_initial_given_proposal = (
+            -0.5
+            * torch.sum(
+                self._wrap(initial - proposal - step_size * drift_proposal) ** 2, dim=dims
+            )
+            / sigma2
+        )
+        log_q_proposal_given_initial = (
+            -0.5
+            * torch.sum(
+                self._wrap(proposal - initial - step_size * drift_initial) ** 2, dim=dims
+            )
+            / sigma2
+        )
+        return log_q_initial_given_proposal - log_q_proposal_given_initial
 
 
 @torch.no_grad()
