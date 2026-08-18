@@ -745,7 +745,7 @@ class AngularMAALASamplerWRescaling(AngularMixin, MAALASamplerWRescaling):
 
 
 
-class PoorManSampler(MetropolisMixin, EulerMaruyamaSampler):
+class PoorManEulerSampler(MetropolisMixin, EulerMaruyamaSampler):
     """
     This class implements a hybrid sampling system. It uses an Euler-Maruyama sampler for the majority of a trajectory.
     The rest follows a Metropolis-adjusted Langevin update similar to :class:`MAALASampler`.
@@ -811,7 +811,7 @@ class PoorManSampler(MetropolisMixin, EulerMaruyamaSampler):
             batch_t = t_i.expand(shape[0])
 
             # Predictor --- One step at the schedule's noise level ---
-            if i <= mh_threshold * num_steps:
+            if t_i >= 10 * self.eps:
                 drift = self._score(x, batch_t, *labels)
                 x = self.update_step(x, g2_t[i] * drift, step_size[i], step_size_sqrt[i])
             else:
@@ -839,7 +839,141 @@ class PoorManSampler(MetropolisMixin, EulerMaruyamaSampler):
         return self.collect(hist, x, flag=keep_history)
 
 
-class AngularPoorManSamplerWRescaling(AngularMixin, ScoreRescalingMixin, PoorManSampler):
+class PoorManHeunSampler(MetropolisMixin, StochasticHeunSampler):
+    """
+    This class implements a hybrid sampling system. It uses an Euler-Maruyama sampler for the majority of a trajectory.
+    The rest follows a Metropolis-adjusted Langevin update similar to :class:`MAALASampler`.
+
+
+    Parameters
+    ----------
+    model : :class:`ScoreModel`
+        Trained score model.
+    action: Callable
+        The action or log-likelihood as a function of state.
+
+    Attributes
+    ----------
+    model : :class:`ScoreModel`
+        Score model used during reverse-time integration.
+    action : Callable
+        Log-likelihood function used in the Metropolis-Hastings accept/reject step.
+    device: torch.device
+        Device on which sampling is performed.
+    schedule : :class:`~diffusion_models.noise.noise_scheduler.Schedule`
+        Noise schedule of the diffusion process.
+    """
+    def __init__(self, model: ScoreModel, action: Callable, **kwargs):
+        super().__init__(model, action=action, **kwargs)
+
+
+    def sample(
+        self,
+        shape: tuple,
+        num_steps: int,
+        l_steps: int,
+        l_stepsize: float,
+        S_churn: float,
+        S_noise: float,
+        std_range: tuple[float, float],
+        mh_threshold: float = 0.95,
+        schedule_type: str = "uniform",
+        rho: float = 1.0,
+        keep_history: bool = False,
+        *labels,
+        **kwargs,
+    ) -> Tensor:
+        """
+        :param l_steps: Number of inner Langevin steps per annealing step.
+        :type l_steps: int
+        :param l_stepsize: Step size ``alpha`` used for the inner Langevin dynamics
+            (constant across the schedule, unlike the outer predictor step).
+        :type l_stepsize: float
+        :param mh_threshold: Fraction of the schedule (in ``[0,1]``) after which inner steps
+            switch from plain (unadjusted) Langevin to MH-corrected.
+        :type mh_threshold: float
+        :param schedule_type: See :meth:`build_schedule`.
+        :type schedule_type: str, optional
+        :param rho: See :meth:`build_schedule`.
+        :type rho: float, optional
+        """
+        timesteps, _, _, _ = self.build_schedule(
+            num_steps, schedule_type, rho
+        )
+        t_next_all = torch.cat([timesteps[1:], timesteps.new_tensor([self.eps])])
+
+        x = self.init_sample(shape)
+        hist = self.init_history(num_steps, shape, keep_history)
+        self.model.eval()
+
+        gamma = min(S_churn / num_steps, self.gamma_max)
+        std_min, std_max = std_range
+        std_cap = self.schedule.stddev(timesteps.new_tensor(1.0)) / (1 + gamma) ** 2
+        std_max = min(std_max, std_cap)
+
+        for i, t_i in enumerate(tqdm(timesteps)):
+            batch_t = t_i.expand(shape[0])
+
+            if i <= mh_threshold * num_steps:
+                # Predictor --- One step at the schedule's noise level ---
+                t_next = t_next_all[i]
+                std_i = self.schedule.stddev(t_i)
+
+                # Churn
+                gamma_i = gamma if std_min <= std_i <= std_max else 0.0
+                std_hat = std_i * (1 + gamma_i)
+                t_hat = self.schedule.invert_variance_to_time(std_hat**2)
+
+                ratio = self._mean_scale(x, t_hat.unsqueeze(0)) / self._mean_scale(
+                    x, t_i.unsqueeze(0)
+                )
+                noise_var = (std_hat**2 - (ratio * std_i) ** 2).clamp(min=0)
+                x_hat = self.update_step(
+                    ratio * x,
+                    torch.zeros_like(x),
+                    step_size=0,
+                    step_size_sqrt=noise_var.sqrt() * S_noise,
+                )
+
+                # Predictor
+                batch_t_hat = t_hat.expand(shape[0])
+                drift_hat = self.prob_flow_drift(x_hat, batch_t_hat)
+                dt = t_hat - t_next
+                x_euler = self.update_step(x_hat, drift_hat, step_size=dt, step_size_sqrt=0)
+
+                batch_t_next = t_next.expand(shape[0])
+                drift_next = self.prob_flow_drift(x_euler, batch_t_next)
+                avg_drift = 0.5 * (drift_hat + drift_next)
+                x = self.update_step(x_hat, avg_drift, step_size=dt, step_size_sqrt=0)
+            else:
+                # Corrector --- ``l_steps`` of Langevin dynamics ---
+                alpha = l_stepsize
+                alpha_sqrt = math.sqrt(2 * alpha)
+
+                for _ in range(l_steps):
+                    drift_initial = self._score(x, batch_t, *labels)
+                    x_hat = self.update_step(x, drift_initial, alpha, alpha_sqrt)
+
+                    drift_proposal = self._score(x_hat, batch_t, *labels)
+                    logq_diff = self.logq(
+                        x,
+                        x_hat,
+                        drift_initial,
+                        drift_proposal,
+                        alpha,
+                        dims=tuple(range(1, x.ndim)),
+                    )
+                    x = self.mh_accept(x, x_hat, logq_diff)
+
+            self.record(hist, x, idx=i, flag=keep_history)
+
+        return self.collect(hist, x, flag=keep_history)
+
+
+class AngularPoorManEulerSamplerWRescaling(AngularMixin, ScoreRescalingMixin, PoorManEulerSampler):
+    pass
+
+class AngularPoorManHeunSamplerWRescaling(AngularMixin, ScoreRescalingMixin, PoorManHeunSampler):
     pass
 
 
