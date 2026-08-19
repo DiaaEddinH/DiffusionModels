@@ -12,9 +12,9 @@
     diffusion_models.sampling.samplers.AngularStochasticHeunSampler
     diffusion_models.sampling.samplers.MAALASampler
 
+    diffusion_models.sampling.samplers.MetropolisMixin
     diffusion_models.sampling.samplers.AngularMixin
     diffusion_models.sampling.samplers.ScoreRescalingMixin
-
 
 .. autoclass:: diffusion_models.sampling.samplers.BaseSampler
 	:members:
@@ -32,6 +32,9 @@
 	:members:
 
 .. autoclass:: diffusion_models.sampling.samplers.MAALASampler
+	:members:
+
+.. autoclass:: diffusion_models.sampling.samplers.MetropolisMixin
 	:members:
 
 .. autoclass:: diffusion_models.sampling.samplers.AngularMixin
