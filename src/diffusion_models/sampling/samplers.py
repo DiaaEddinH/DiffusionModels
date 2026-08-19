@@ -977,6 +977,173 @@ class AngularPoorManHeunSamplerWRescaling(AngularMixin, ScoreRescalingMixin, Poo
     pass
 
 
+class WindingJumpMixin:
+    """
+    This mixin adds a topological winding-jump move implementation based on `arXiv:2111.05745 <https://arxiv.org/abs/2111.05745>`_.
+
+    .. warning::
+
+        The jump proposal is MH-corrected via :class:`MetropolisMixin`'s :meth:`mh_accept`. Therefore, this Mixin needs to be set-up as follows::
+
+            class WindingJumpSampler(WindingJumpMixin, MetropolisMixin, ...):
+                ...
+    
+    """    
+    def _boundary_phase_field(self, L: int, i0: int, j0: int, Lw: int, sign: int, device):
+        """Build phi(i,j) over the full lattice: 0 outside/interior of S_w,
+        winding phase on the boundary ring of the Lw x Lw patch at (i0,j0)."""
+        phi = torch.zeros(L, L, device=device)
+        # collect boundary sites of the patch in perimeter order
+        pts = []
+        for k in range(Lw):
+            pts.append((i0, j0 + k))                    # bottom edge
+        for k in range(1, Lw):
+            pts.append((i0 + k, j0 + Lw - 1))            # right edge
+        for k in range(1, Lw):
+            pts.append((i0 + Lw - 1, j0 + Lw - 1 - k))   # top edge
+        for k in range(1, Lw - 1):
+            pts.append((i0 + Lw - 1 - k, j0))            # left edge
+        n_pts = len(pts)
+        for n, (i, j) in enumerate(pts):
+            phase = sign * (math.pi / 2) * (n / Lw)
+            phi[i % L, j % L] = phase
+        return phi  # interior points remain 0 by construction
+
+    def propose_winding(self, y: Tensor, Lw: int) -> Tensor:
+        L = y.shape[-1]
+        i0 = torch.randint(0, L, (1,)).item()
+        j0 = torch.randint(0, L, (1,)).item()
+        sign = 1 if torch.rand(1).item() < 0.5 else -1
+        phi = self._boundary_phase_field(L, i0, j0, Lw, sign, y.device)  # (L, L)
+
+        in_patch = torch.zeros(L, L, dtype=torch.bool, device=y.device)
+        ii = (torch.arange(i0, i0 + Lw) % L)
+        jj = (torch.arange(j0, j0 + Lw) % L)
+        in_patch[ii[:, None], jj[None, :]] = True
+
+        y_prop = y.clone()
+        for mu, shift in enumerate([(1, 0), (0, 1)]):  # mu=0: i-dir, mu=1: j-dir
+            di, dj = shift
+            end_i = (torch.arange(L) + di) % L
+            end_j = (torch.arange(L) + dj) % L
+            both_in = in_patch & in_patch[end_i][:, end_j]
+            dphi = phi - phi[end_i][:, end_j]
+            y_prop[..., mu, :, :] = torch.where(
+                both_in, y_prop[..., mu, :, :] + dphi, y_prop[..., mu, :, :]
+            )
+        return (y_prop + math.pi) % (2 * math.pi) - math.pi
+
+    def jump_step(self, y: Tensor, Lw: int) -> Tensor:
+        y_prop = self.propose_winding(y, Lw)
+        logq_diff = torch.zeros(y.shape[0], device=self.device)  # trivial Jacobian
+        return self.mh_accept(y, y_prop, logq_diff)
+
+class MAJDSampler(WindingJumpMixin, AngularPoorManHeunSamplerWRescaling):
+    def sample(
+        self,
+        shape: tuple,
+        num_steps: int,
+        l_steps: int,
+        l_stepsize: float,
+        S_churn: float,
+        S_noise: float,
+        std_range: tuple[float, float],
+        winding_area: int = 4,
+        mh_threshold: float = 0.95,
+        schedule_type: str = "uniform",
+        rho: float = 1.0,
+        keep_history: bool = False,
+        *labels,
+        **kwargs,
+    ) -> Tensor:
+        """
+        :param l_steps: Number of inner Langevin steps per annealing step.
+        :type l_steps: int
+        :param l_stepsize: Step size ``alpha`` used for the inner Langevin dynamics
+            (constant across the schedule, unlike the outer predictor step).
+        :type l_stepsize: float
+        :param mh_threshold: Fraction of the schedule (in ``[0,1]``) after which inner steps
+            switch from plain (unadjusted) Langevin to MH-corrected.
+        :type mh_threshold: float
+        :param schedule_type: See :meth:`build_schedule`.
+        :type schedule_type: str, optional
+        :param rho: See :meth:`build_schedule`.
+        :type rho: float, optional
+        """
+        timesteps, _, _, _ = self.build_schedule(
+            num_steps, schedule_type, rho
+        )
+        t_next_all = torch.cat([timesteps[1:], timesteps.new_tensor([self.eps])])
+
+        x = self.init_sample(shape)
+        hist = self.init_history(num_steps, shape, keep_history)
+        self.model.eval()
+
+        gamma = min(S_churn / num_steps, self.gamma_max)
+        std_min, std_max = std_range
+        std_cap = self.schedule.stddev(timesteps.new_tensor(1.0)) / (1 + gamma) ** 2
+        std_max = min(std_max, std_cap)
+
+        for i, t_i in enumerate(tqdm(timesteps)):
+            batch_t = t_i.expand(shape[0])
+
+            if i <= mh_threshold * num_steps:
+                # Predictor --- One step at the schedule's noise level ---
+                t_next = t_next_all[i]
+                std_i = self.schedule.stddev(t_i)
+
+                # Churn
+                gamma_i = gamma if std_min <= std_i <= std_max else 0.0
+                std_hat = std_i * (1 + gamma_i)
+                t_hat = self.schedule.invert_variance_to_time(std_hat**2)
+
+                ratio = self._mean_scale(x, t_hat.unsqueeze(0)) / self._mean_scale(
+                    x, t_i.unsqueeze(0)
+                )
+                noise_var = (std_hat**2 - (ratio * std_i) ** 2).clamp(min=0)
+                x_hat = self.update_step(
+                    ratio * x,
+                    torch.zeros_like(x),
+                    step_size=0,
+                    step_size_sqrt=noise_var.sqrt() * S_noise,
+                )
+
+                # Predictor
+                batch_t_hat = t_hat.expand(shape[0])
+                drift_hat = self.prob_flow_drift(x_hat, batch_t_hat)
+                dt = t_hat - t_next
+                x_euler = self.update_step(x_hat, drift_hat, step_size=dt, step_size_sqrt=0)
+
+                batch_t_next = t_next.expand(shape[0])
+                drift_next = self.prob_flow_drift(x_euler, batch_t_next)
+                avg_drift = 0.5 * (drift_hat + drift_next)
+                x = self.update_step(x_hat, avg_drift, step_size=dt, step_size_sqrt=0)
+            else:
+                # Corrector --- ``l_steps`` of Langevin dynamics ---
+                alpha = l_stepsize
+                alpha_sqrt = math.sqrt(2 * alpha)
+
+                for _ in range(l_steps):
+                    drift_initial = self._score(x, batch_t, *labels)
+                    x_hat = self.update_step(x, drift_initial, alpha, alpha_sqrt)
+
+                    drift_proposal = self._score(x_hat, batch_t, *labels)
+                    logq_diff = self.logq(
+                        x,
+                        x_hat,
+                        drift_initial,
+                        drift_proposal,
+                        alpha,
+                        dims=tuple(range(1, x.ndim)),
+                    )
+                    x = self.mh_accept(x, x_hat, logq_diff)
+                    x = self.jump_step(x, Lw=winding_area)
+
+            self.record(hist, x, idx=i, flag=keep_history)
+
+        return self.collect(hist, x, flag=keep_history)
+
+
 @torch.no_grad()
 def ot_sampler(
     model: torch.nn.Module,
