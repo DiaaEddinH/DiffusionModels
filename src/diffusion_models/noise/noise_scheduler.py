@@ -277,7 +277,7 @@ class LinearSchedule(Schedule):
 
     def beta_schedule(self, t: Tensor) -> Tensor:
         """
-        Evaluates the noise schedule :math:`\\beta(t) = \\beta_{\\min} + (\\beta_{\\max} - \\beta_{\\min})` for each time ``t``.
+        Evaluates the noise schedule :math:`\\beta(t) = \\beta_{\\min} + t (\\beta_{\\max} - \\beta_{\\min})` for each time ``t``.
 
         :param t: Time values at which to evaluate the schedule.
         :type t: Tensor
