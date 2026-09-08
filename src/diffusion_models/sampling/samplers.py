@@ -46,6 +46,20 @@ class BaseSampler(ABC):
         self.schedule = model.schedule
         self.eps = model.schedule.eps
 
+
+    @abstractmethod
+    def prob_flow_drift(self, x: Tensor, t: Tensor, *labels) -> Tensor:
+        """
+        Implements drift term :math:`v(x, t) = -f(x, t) + g^2(t) s_\\theta(x, t)`
+
+        :param x: Input state
+        :type x: Tensor
+        :param t: Time value
+        :type t: Tensor
+        :return: Drift term of reverse process.
+        :rtype: Tensor
+        """
+
     @abstractmethod
     def init_sample(self, shape: tuple) -> Tensor:
         """
@@ -142,6 +156,23 @@ class EulerMaruyamaSampler(BaseSampler):
     def __init__(self, model: ScoreModel):
         super().__init__(model)
 
+    def prob_flow_drift(self, x: Tensor, t: Tensor, *args) -> Tensor:
+        """
+        Implements drift term :math:`v(x, t) = -f(x, t) + g^2(t) s_\\theta(x, t)`
+
+        :param x: Input state
+        :type x: Tensor
+        :param t: Time value
+        :type t: Tensor
+        :return: Drift term of reverse process.
+        :rtype: Tensor
+        """
+        d = (x.dim() - 1) * (None,)
+        score = self._score(x, t, *args)
+        force = self.schedule.drift_term(x, t)
+        g2 = self.schedule.diffusion_coeff(t) ** 2
+        return -force + g2[:, *d] * score
+
     def init_sample(self, shape: tuple) -> Tensor:
         """
         Initiates the initial condition for the backward diffusion process.
@@ -204,7 +235,7 @@ class EulerMaruyamaSampler(BaseSampler):
         :return: Samples of the final distribution. If `keep_history=True`, returns the trajectory history
         :rtype: Tensor
         """
-        timesteps, g2_t, step_size, step_size_sqrt = self.build_schedule(
+        timesteps, _, step_size, step_size_sqrt = self.build_schedule(
             num_steps, schedule_type, rho
         )
 
@@ -214,9 +245,10 @@ class EulerMaruyamaSampler(BaseSampler):
 
         for i, t_i in enumerate(tqdm(timesteps)):
             batch_t = t_i.expand(shape[0])
-            drift = -self.schedule.drift_term(x, batch_t) + g2_t[i] * self._score(
-                x, batch_t
-            )
+            drift = self.prob_flow_drift(x, batch_t, *labels)
+            # -self.schedule.drift_term(x, batch_t) + g2_t[i] * self._score(
+            #     x, batch_t
+            # )
             x = self.update_step(
                 x, drift, step_size[i], step_size_sqrt[i] if t_i > self.eps else 0
             )
@@ -714,11 +746,11 @@ class MAALASampler(MetropolisMixin, EulerMaruyamaSampler):
             alpha_sqrt = math.sqrt(2 * alpha)
 
             for _ in range(l_steps):
-                drift_initial = self._score(y, batch_t, *labels)
+                drift_initial = self.prob_flow_drift(y, batch_t, *labels)
                 y_hat = self.update_step(y, drift_initial, alpha, alpha_sqrt)
 
                 if i >= mh_threshold * num_steps:
-                    drift_proposal = self._score(y_hat, batch_t, *labels)
+                    drift_proposal = self.prob_flow_drift(y_hat, batch_t, *labels)
                     logq_diff = self.logq(
                         y,
                         y_hat,
@@ -812,7 +844,7 @@ class PoorManEulerSampler(MetropolisMixin, EulerMaruyamaSampler):
 
             # Predictor --- One step at the schedule's noise level ---
             if t_i >= 10 * self.eps:
-                drift = self._score(x, batch_t, *labels)
+                drift = self.prob_flow_drift(x, batch_t, *labels)
                 x = self.update_step(x, g2_t[i] * drift, step_size[i], step_size_sqrt[i])
             else:
                 # Corrector --- ``l_steps`` of Langevin dynamics ---
@@ -820,10 +852,10 @@ class PoorManEulerSampler(MetropolisMixin, EulerMaruyamaSampler):
                 alpha_sqrt = math.sqrt(2 * alpha)
 
                 for _ in range(l_steps):
-                    drift_initial = self._score(x, batch_t, *labels)
+                    drift_initial = self.prob_flow_drift(x, batch_t, *labels)
                     x_hat = self.update_step(x, drift_initial, alpha, alpha_sqrt)
 
-                    drift_proposal = self._score(x_hat, batch_t, *labels)
+                    drift_proposal = self.prob_flow_drift(x_hat, batch_t, *labels)
                     logq_diff = self.logq(
                         x,
                         x_hat,
@@ -951,10 +983,10 @@ class PoorManHeunSampler(MetropolisMixin, StochasticHeunSampler):
                 alpha_sqrt = math.sqrt(2 * alpha)
 
                 for _ in range(l_steps):
-                    drift_initial = self._score(x, batch_t, *labels)
+                    drift_initial = self.prob_flow_drift(x, batch_t, *labels)
                     x_hat = self.update_step(x, drift_initial, alpha, alpha_sqrt)
 
-                    drift_proposal = self._score(x_hat, batch_t, *labels)
+                    drift_proposal = self.prob_flow_drift(x_hat, batch_t, *labels)
                     logq_diff = self.logq(
                         x,
                         x_hat,
