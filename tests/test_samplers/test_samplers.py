@@ -185,7 +185,7 @@ class TestBuildSchedule:
         assert torch.allclose(g2_t, expected)
 
 
-# --------------- sample() ---------------
+# --------------- EulerMaruyama.sample() ---------------
 
 
 class TestSample:
@@ -236,7 +236,7 @@ class TestSampleRealSchedule:
         assert torch.isfinite(out).all()
 
     def test_history_shape_matches_num_steps(self, real_sampler):
-        out = real_sampler.sample((4, 3), num_steps=10, keep_history=True)
+        out = real_sampler.sample((4, 3), num_steps=10, keep_history=True, labels=[0, 1, 2])
         assert out.shape == (10, 4, 3)
 
     @pytest.mark.parametrize("schedule_type", ["uniform", "log", "karras"])
