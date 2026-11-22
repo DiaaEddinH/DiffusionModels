@@ -309,9 +309,9 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
         super().__init__(model)
         self.gamma_max = math.sqrt(2) - 1
 
-    def prob_flow_drift(self, x: Tensor, t: Tensor) -> Tensor:
+    def prob_flow_drift(self, x: Tensor, t: Tensor, *args) -> Tensor:
         d = (x.dim() - 1) * (None,)
-        score = self._score(x, t)
+        score = self._score(x, t, *args)
         force = self.schedule.drift_term(x, t)
         g2 = self.schedule.diffusion_coeff(t) ** 2
         return -force + 0.5 * g2[:, *d] * score
@@ -330,7 +330,7 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
         schedule_type: str = "uniform",
         rho: float = 1.0,
         keep_history: bool = False,
-        *args,
+        *labels,
         **kwargs,
     ):
         """
@@ -368,17 +368,19 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
 
         gamma = min(S_churn / num_steps, self.gamma_max)
         std_min, std_max = std_range
-        std_cap = self.schedule.stddev(timesteps.new_tensor(1.0)) / (1 + gamma) ** 2
-        std_max = min(std_max, std_cap)
+        std_top = self.schedule.stddev(timesteps.new_tensor(1.0)) * (1 - 1e-5)
 
         for i, t_i in enumerate(tqdm(timesteps)):
             t_next = t_next_all[i]
             std_i = self.schedule.stddev(t_i)
+            if std_min <= std_i <= std_max:
+                gamma_i = (std_top / std_i - 1.0).clamp(min=0.0, max=gamma)
+            else:
+                gamma_i = std_i.new_zeros(())
 
             # Churn
-            gamma_i = gamma if std_min <= std_i <= std_max else 0.0
             std_hat = std_i * (1 + gamma_i)
-            t_hat = self.schedule.invert_variance_to_time(std_hat**2)
+            t_hat = self.schedule.invert_variance_to_time(std_hat**2).clamp(max=1.0)
 
             ratio = self._mean_scale(x, t_hat.unsqueeze(0)) / self._mean_scale(
                 x, t_i.unsqueeze(0)
@@ -393,14 +395,14 @@ class StochasticHeunSampler(EulerMaruyamaSampler):
 
             # Predictor
             batch_t_hat = t_hat.expand(shape[0])
-            drift_hat = self.prob_flow_drift(x_hat, batch_t_hat)
+            drift_hat = self.prob_flow_drift(x_hat, batch_t_hat, *labels)
             dt = t_hat - t_next
             x_euler = self.update_step(x_hat, drift_hat, step_size=dt, step_size_sqrt=0)
 
             # Corrector
             if i < num_steps - 1:
                 batch_t_next = t_next.expand(shape[0])
-                drift_next = self.prob_flow_drift(x_euler, batch_t_next)
+                drift_next = self.prob_flow_drift(x_euler, batch_t_next, *labels)
                 avg_drift = 0.5 * (drift_hat + drift_next)
                 x = self.update_step(x_hat, avg_drift, step_size=dt, step_size_sqrt=0)
             else:
@@ -969,12 +971,12 @@ class PoorManHeunSampler(MetropolisMixin, StochasticHeunSampler):
 
                 # Predictor
                 batch_t_hat = t_hat.expand(shape[0])
-                drift_hat = self.prob_flow_drift(x_hat, batch_t_hat)
+                drift_hat = self.prob_flow_drift(x_hat, batch_t_hat, *labels)
                 dt = t_hat - t_next
                 x_euler = self.update_step(x_hat, drift_hat, step_size=dt, step_size_sqrt=0)
 
                 batch_t_next = t_next.expand(shape[0])
-                drift_next = self.prob_flow_drift(x_euler, batch_t_next)
+                drift_next = self.prob_flow_drift(x_euler, batch_t_next, *labels)
                 avg_drift = 0.5 * (drift_hat + drift_next)
                 x = self.update_step(x_hat, avg_drift, step_size=dt, step_size_sqrt=0)
             else:
