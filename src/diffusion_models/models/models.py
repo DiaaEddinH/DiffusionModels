@@ -323,17 +323,18 @@ class EnergyBasedModel(ScoreModel):
     def __init__(
         self,
         network: Module,
-        schedule: Optional[Schedule] = None,
-        device: str = None,
-        **kwargs,
+        schedule: Schedule,
+        device: str | torch.device | None = None,
+        decay_rate: float = 0.999,
+        **kwargs: Any,
     ):
-        super().__init__(network, schedule, device, **kwargs)
+        super().__init__(network, schedule, device, decay_rate, **kwargs)
 
     def energy(self, x: Tensor, t: Tensor, *labels):
-        score = self.network(x, t, *labels)
+        output = self.network(x, t, *labels)
         return (
             -0.5
-            * torch.sum(score**2, dim=tuple(range(1, x.dim())))
+            * torch.sum(output**2, dim=tuple(range(1, x.dim())))
             / self.schedule.stddev(t)
         )
 
