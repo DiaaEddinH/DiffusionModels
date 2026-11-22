@@ -25,7 +25,12 @@ def binning_sampler(data: NDArray, observable: Callable[[NDArray], NDArray], n_b
     bins = []
     for _ in range(n_bins):
         idx = rng.integers(0, n_samples, size=n_samples)
-        bins.append(observable(data[idx]))
+        obs = observable(data[idx])
+
+        if obs.ndim > 0 and obs.shape[0] == len(data):
+            obs = np.mean(obs, axis=0)
+
+        bins.append(obs)
 
     return np.asarray(bins)
 
@@ -49,10 +54,9 @@ def bootstrap_estimator(data: NDArray, observable: Callable[[NDArray], NDArray],
     bins = binning_sampler(data, observable, n_bins, rng)
     if np.iscomplexobj(bins):
         bins = np.stack([bins.real, bins.imag], axis=-1)
-    bin_estimates = np.mean(bins, axis=1)
 
-    mean = np.mean(bin_estimates, axis=0)
-    err = np.std(bin_estimates, axis=0, ddof=1)
+    mean = np.mean(bins, axis=0)
+    err = np.std(bins, axis=0, ddof=1)
     return mean, err
 
 
@@ -72,6 +76,8 @@ def bootstrap(data, n_bins: int = 100, rng: Generator | int | None = None) -> ND
     if n_bins < 2:
         raise ValueError(f"n_bins must be >= 2 to estimate error, got {n_bins}.")
     bins = binning_sampler(data, lambda d: np.mean(d, axis=0), n_bins, rng)
+    if np.iscomplexobj(bins):
+        bins = np.stack([bins.real, bins.imag], axis=-1)
     mean = np.mean(bins, axis=0)
     err = np.std(bins, axis=0, ddof=1)
     return mean, err
