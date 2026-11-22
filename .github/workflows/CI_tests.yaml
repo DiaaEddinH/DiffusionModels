@@ -41,6 +41,18 @@ jobs:
           if [ -f pyproject.toml ] || [ -f setup.cfg ] || [ -f setup.py ]; then
             pip install -e .
           fi
+    
+      - name: Fix PyTorch executable stack
+        shell: bash -el {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+
+          TORCH_LIB="$CONDA_PREFIX/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so"
+
+          patchelf --clear-execstack "$TORCH_LIB"
+
+          python -c "import torch; print(torch.__version__)"
 
       - name: Run pytest
         shell: bash -l {0}
