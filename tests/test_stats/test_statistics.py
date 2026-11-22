@@ -366,7 +366,7 @@ class TestStatistics(unittest.TestCase):
     def test_bootstrap_reproducible_and_shapes(self):
         # Use global test seed for determinism; just validate API and outputs
         data = np.random.randn(100, 2)
-        means, errs = diffusion_models.stats.bootstrap.bootstrap(data, n_boot=BOOT_N)
+        means, errs = diffusion_models.stats.bootstrap.bootstrap(data, n_bins=BOOT_N)
         self.assertEqual(means.shape, (2,))
         self.assertEqual(errs.shape, (2,))
         self.assertTrue(np.isfinite(means).all())
