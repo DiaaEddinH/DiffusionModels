@@ -1,8 +1,10 @@
 import torch
 from torch import Tensor
-from torch.nn import Module, ModuleList
 from typing import Optional
+from collections.abc import Sequence
+from torch.nn import Module, ModuleList
 
+from .layers import CConv4d, TimeModulation
 from torch.nn.utils.parametrizations import weight_norm
 
 
@@ -702,3 +704,58 @@ class EvenResNet(ResNet):
             x = block(x, t_emb)
             x_ = block(x_, t_emb)
         return self.layer_out(0.5 * (x + x_))
+
+
+class CNet4d(Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        channels: Sequence[int],
+        embed_dim: int,
+        kernel_size: int,
+        device: str | torch.device | None = None,
+    ):
+        super().__init__()
+        self.time_embed = Embedding(embed_dim, device=device)
+        self.layers = ModuleList()
+        self.time_mods = ModuleList()
+        c_in = in_channels
+        for c_out in channels:
+            self.layers.append(
+                CConv4d(
+                    c_in,
+                    c_out,
+                    kernel_size,
+                    stride=1,
+                    dilation=1,
+                    bias=True,
+                    device=device
+                )
+            )
+            self.time_mods.append(
+                TimeModulation(embed_dim, c_out, device=device)
+            )
+            c_in = c_out
+        
+        self.final_conv = CConv4d(
+            c_in,
+            out_channels,
+            kernel_size,
+            stride=1,
+            dilation=1,
+            bias=True,
+            device=device
+        )
+        self.act = torch.nn.SiLU()
+
+    def forward(self, x: Tensor, t: Tensor):
+        # Time embedding
+        t_embed: Tensor = self.time_embed(t)
+
+        for layer, t_mod in zip(self.layers, self.time_mods):
+            h = layer(x)
+            x = t_mod(h, t_embed)
+            x = h + self.act(x)
+
+        return self.final_conv(x)
